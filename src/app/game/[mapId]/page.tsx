@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input'; // Import Input component
 import { X, Trophy } from 'lucide-react'; // Added Trophy icon for HUD
 import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
 import type { NodeInteractionCallback } from '@/game/scenes/MainScene'; // Import the type only
@@ -47,10 +48,12 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   const [showQuiz, setShowQuiz] = useState(false);
   const [currentQuiz, setCurrentQuiz] = useState<typeof mockQuizzes[string] | null>(null);
   const [currentQuizNodeId, setCurrentQuizNodeId] = useState<string | null>(null); // Store nodeId when quiz opens
+  const [shortAnswerValue, setShortAnswerValue] = useState(''); // State for short answer input
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const sceneInstanceRef = useRef<MainSceneType | null>(null); // Use the imported type
   const { toast } = useToast(); // Initialize toast
+  const shortAnswerInputRef = useRef<HTMLInputElement>(null); // Ref for short answer input
 
 
   // Callback function for Phaser scene to trigger quiz
@@ -61,10 +64,20 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         setCurrentQuiz(quizData);
         setCurrentQuizNodeId(nodeId); // Store the nodeId associated with this quiz
         setShowQuiz(true);
+        setShortAnswerValue(''); // Clear previous short answer
+
+        // Disable Phaser keyboard input when quiz opens, especially for short answer
+        if (quizData.type === 'short-answer') {
+             sceneInstanceRef.current?.disableKeyboardInput();
+             // Focus the input field shortly after the modal appears
+             setTimeout(() => shortAnswerInputRef.current?.focus(), 100);
+        }
     } else {
         console.warn(`No quiz found for nodeId: ${nodeId}`);
         // If no quiz, immediately signal Phaser to remove the non-interactive node
         removeNode(nodeId);
+        // Ensure input is enabled if no quiz is shown
+        sceneInstanceRef.current?.enableKeyboardInput();
     }
   };
 
@@ -122,6 +135,13 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                   mode: Phaser.Scale.RESIZE,
                   autoCenter: Phaser.Scale.CENTER_BOTH, // Center the game canvas
               },
+              input: {
+                keyboard: {
+                    // Prevent default browser behavior (like scrolling with spacebar)
+                    // ONLY if needed and handled carefully. Often not required.
+                    // capture: [ Phaser.Input.Keyboard.KeyCodes.SPACE ]
+                }
+              },
               // Use postBoot to safely access the scene instance after Phaser setup
               callbacks: {
                 postBoot: (bootedGame) => {
@@ -137,7 +157,6 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                       } else {
                         console.error("MainScene does not have an initScene method.");
                          // Fallback or alternative setup if initScene isn't defined
-                         // scene.setInteractionCallback(handleNodeInteraction); // Assuming old method exists
                          sceneInstanceRef.current = scene;
                          console.warn("Used legacy setInteractionCallback. Consider adding initScene(data, callback) to MainScene.");
                       }
@@ -177,11 +196,28 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
       // Add resolvedParams to dependencies to re-initialize if it changes (e.g., navigating between maps)
       }, [resolvedParams]);
 
-  const handleAnswerSubmit = (selectedAnswer: string) => {
+    const submitShortAnswer = () => {
+        handleAnswerSubmit(shortAnswerValue);
+    }
+
+    const handleShortAnswerKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        // Allow spacebar
+        if (event.key === ' ') {
+            // Default behavior is fine, no preventDefault needed usually
+            // event.stopPropagation(); // Stop propagation if Phaser is capturing space too aggressively
+        }
+        // Submit on Enter
+        if (event.key === 'Enter') {
+            event.preventDefault(); // Prevent form submission if it's in a form
+            submitShortAnswer();
+        }
+    };
+
+    const handleAnswerSubmit = (selectedAnswer: string) => {
       console.log('Answer submitted:', selectedAnswer);
       if (!currentQuiz || !currentQuizNodeId) return; // Ensure we have quiz and node ID
 
-      const isCorrect = selectedAnswer === currentQuiz.correctAnswer;
+      const isCorrect = selectedAnswer.trim().toLowerCase() === currentQuiz.correctAnswer.toLowerCase(); // Trim and ignore case for short answers
 
       // Display feedback toast
       toast({
@@ -206,8 +242,12 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
       // Remove the node from Phaser now that it's answered
       removeNode(currentQuizNodeId);
 
+       // --- CRITICAL: Re-enable Phaser keyboard input ---
+       sceneInstanceRef.current?.enableKeyboardInput();
+
       setCurrentQuiz(null); // Reset current quiz
       setCurrentQuizNodeId(null); // Reset current node ID
+      setShortAnswerValue(''); // Clear short answer input
   };
 
   const closeQuiz = () => {
@@ -221,8 +261,13 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
        } else {
           console.warn("Could not re-enable node on quiz close.");
        }
+
+        // --- CRITICAL: Re-enable Phaser keyboard input ---
+       sceneInstanceRef.current?.enableKeyboardInput();
+
       setCurrentQuiz(null);
       setCurrentQuizNodeId(null);
+      setShortAnswerValue(''); // Clear short answer input
   }
 
   return (
@@ -309,16 +354,24 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                         </div>
                     )}
                         {currentQuiz.type === 'short-answer' && (
-                            <div>
-                                {/* Consider using react-hook-form for better state management */}
-                                <input id="short-answer-input" type="text" placeholder="Type your answer..." className="w-full p-2 border rounded mb-3 focus:ring-primary focus:border-primary" /> {/* Added focus style */}
-                                <Button onClick={() => {
-                                    const inputElement = document.getElementById('short-answer-input') as HTMLInputElement;
-                                    handleAnswerSubmit(inputElement?.value || '');
-                                }}
-                                className="w-full" // Make submit button full width
-                                >Submit</Button>
-                            </div>
+                             // Use a form for better accessibility and Enter key handling
+                            <form onSubmit={(e) => { e.preventDefault(); submitShortAnswer(); }} className="space-y-3">
+                                <Input
+                                    ref={shortAnswerInputRef} // Add ref
+                                    id="short-answer-input"
+                                    type="text"
+                                    placeholder="Type your answer..."
+                                    value={shortAnswerValue}
+                                    onChange={(e) => setShortAnswerValue(e.target.value)}
+                                    onKeyDown={handleShortAnswerKeyDown} // Add key down handler
+                                    className="w-full p-2 border rounded focus:ring-primary focus:border-primary" // Added focus style
+                                    autoComplete="off" // Prevent browser autocomplete
+                                    aria-label="Short answer input"
+                                />
+                                <Button type="submit" className="w-full">
+                                    Submit
+                                </Button>
+                            </form>
                         )}
                     {/* TODO: Add rendering for other quiz types */}
                     </CardContent>

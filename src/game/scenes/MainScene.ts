@@ -23,6 +23,7 @@ export default class MainScene extends Phaser.Scene {
   private maxZoom = 3; // Maximum zoom level
   private zoomIncrement = 0.1; // How much to zoom per step
   private playerScale = 1.5; // Make player larger
+  private keyboardInputEnabled = true; // Flag to control player movement input
 
   constructor() {
     super({ key: 'MainScene' });
@@ -281,10 +282,21 @@ export default class MainScene extends Phaser.Scene {
 
     // --- Physics and Input ---
     this.physics.add.overlap(this.player, this.nodes, this.handleNodeOverlap, undefined, this);
-    this.cursors = this.input.keyboard?.createCursorKeys();
-    // Add WASD keys
+
+    // Setup keyboard input listeners
     if (this.input.keyboard) {
+        this.cursors = this.input.keyboard.createCursorKeys();
         this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key; };
+
+        // Stop propagation for keys used by player movement IF THEY CONFLICT with UI
+        // Only do this if absolutely necessary and test thoroughly.
+        // Example: Stop spacebar propagation if it causes issues while typing
+        // this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE).on('down', (event: KeyboardEvent) => {
+        //      if (!this.keyboardInputEnabled) { // Only interfere when UI is active
+        //          event.stopPropagation();
+        //      }
+        // });
+        // Do the same for W, A, S, D if needed.
     }
 
 
@@ -383,8 +395,49 @@ export default class MainScene extends Phaser.Scene {
        }
    }
 
+   // Methods to control keyboard input enabling/disabling
+   disableKeyboardInput() {
+       console.log("Disabling Phaser keyboard input.");
+       this.keyboardInputEnabled = false;
+       // Optionally stop specific keys if they were captured
+       // if (this.input.keyboard) {
+       //     this.input.keyboard.removeKey(Phaser.Input.Keyboard.KeyCodes.W);
+       //     this.input.keyboard.removeKey(Phaser.Input.Keyboard.KeyCodes.A);
+       //     // etc. for S, D, SPACE, ARROWS if captured
+       // }
+   }
+
+   enableKeyboardInput() {
+       console.log("Enabling Phaser keyboard input.");
+       this.keyboardInputEnabled = true;
+       // Re-add keys if they were removed (ensure WASD keys object exists)
+       // if (this.input.keyboard && !this.wasdKeys) {
+       //     this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as any;
+       // }
+       // if (this.input.keyboard && !this.cursors) {
+       //      this.cursors = this.input.keyboard.createCursorKeys();
+       // }
+       // Re-add captured keys if needed
+       // this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE).on('down', ...);
+   }
+
 
   update(time: number, delta: number) {
+    // Only process player movement if keyboard input is enabled
+    if (!this.keyboardInputEnabled) {
+         // Ensure player stops moving when input is disabled
+         if (this.player && this.player.body) {
+             this.player.setVelocity(0);
+             // Optional: Set to idle animation based on last facing direction
+             const currentAnimKey = this.player.anims.currentAnim?.key;
+             if (currentAnimKey && currentAnimKey.startsWith('walk_')) {
+                 const facing = currentAnimKey.split('_')[1];
+                 this.player.anims.play(`idle_${facing}`, true);
+             }
+         }
+         return;
+    }
+
     if (!this.player || !(this.player instanceof Phaser.Physics.Arcade.Sprite) || !this.player.body) {
       return;
     }
