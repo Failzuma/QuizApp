@@ -10,7 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
-import MainScene from '@/game/scenes/MainScene'; // Import the Phaser scene
+import MainScene, { type NodeInteractionCallback } from '@/game/scenes/MainScene'; // Import the Phaser scene and type
 
 // Mock Data - Replace with real-time data later
 const mockPlayers = [
@@ -48,7 +48,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
 
   // Callback function for Phaser scene to trigger quiz
-  const handleNodeInteraction = (nodeId: string) => {
+  const handleNodeInteraction: NodeInteractionCallback = (nodeId) => {
     console.log(`React received interaction from node: ${nodeId}`);
     const quizData = mockQuizzes[nodeId];
     if (quizData) {
@@ -56,12 +56,19 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         setShowQuiz(true);
     } else {
         console.warn(`No quiz found for nodeId: ${nodeId}`);
+        // Optionally re-enable the node immediately if no quiz is found
+        reEnableNode(nodeId);
     }
   };
 
   // Function to signal Phaser to re-enable a node
   const reEnableNode = (nodeId: string) => {
-    sceneInstanceRef.current?.reEnableNode(nodeId);
+    // Ensure scene instance is available before calling method
+    if (sceneInstanceRef.current) {
+        sceneInstanceRef.current.reEnableNode(nodeId);
+    } else {
+        console.warn("Scene instance ref not set, cannot re-enable node.");
+    }
   };
 
 
@@ -71,35 +78,49 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
           return;
         }
 
-        const mainScene = new MainScene();
-        sceneInstanceRef.current = mainScene; // Store scene instance
+        // Create the scene instance *before* the game config
+        // This ensures constructor runs, but init/create run via Phaser lifecycle
+        const mainSceneInstance = new MainScene();
 
         const config: Phaser.Types.Core.GameConfig = {
           type: Phaser.AUTO,
           parent: gameContainerRef.current,
-          width: '100%',
-          height: 600,
+          width: '100%', // Use percentages or fixed values
+          height: 600, // Fixed height is usually better for Phaser canvas
           physics: {
             default: 'arcade',
             arcade: {
               gravity: { y: 0 },
+              // debug: process.env.NODE_ENV === 'development' // Optional debug drawing
             },
           },
-          scene: [mainScene], // Use the instance here
+          // Pass the scene *instance* here. Phaser will call its init, preload, create methods.
+          scene: [mainSceneInstance],
           scale: {
-              mode: Phaser.Scale.FIT,
-              autoCenter: Phaser.Scale.CENTER_BOTH,
+              mode: Phaser.Scale.FIT, // Fit the game within the parent container
+              autoCenter: Phaser.Scale.CENTER_BOTH, // Center the game canvas
           },
-          // Pass the callback via scene create data
+          // Use postBoot to safely access the scene instance after Phaser setup
           callbacks: {
             postBoot: (game) => {
-              // Access the scene instance after it's fully booted
+              // Access the scene instance using the key provided in its constructor (default is the class name)
               const scene = game.scene.getScene('MainScene') as MainScene;
               if (scene) {
-                scene.init({ onNodeInteract: handleNodeInteraction });
-                sceneInstanceRef.current = scene; // Ensure ref points to the active scene
+                  // Pass the callback to the scene instance using the dedicated method
+                  scene.setInteractionCallback(handleNodeInteraction);
+                  sceneInstanceRef.current = scene; // Store the scene instance reference
+                  console.log("Scene interaction callback set in postBoot.");
               } else {
-                  console.error("MainScene not found after boot");
+                  console.error("MainScene not found after boot. Ensure scene key matches.");
+                  // Attempt to get by index if key fails (less reliable)
+                  const sceneByIndex = game.scene.scenes[0] as MainScene;
+                   if (sceneByIndex instanceof MainScene) {
+                       sceneByIndex.setInteractionCallback(handleNodeInteraction);
+                       sceneInstanceRef.current = sceneByIndex;
+                       console.log("Scene interaction callback set via index in postBoot.");
+                   } else {
+                      console.error("Could not get scene instance by key or index.");
+                   }
               }
             }
           }
@@ -115,13 +136,14 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
           gameInstanceRef.current = null;
           sceneInstanceRef.current = null; // Clear scene ref
         };
-      }, []);
+      }, []); // Empty dependency array ensures this runs only once on mount
 
   const handleAnswerSubmit = (selectedAnswer: string) => {
       console.log('Answer submitted:', selectedAnswer);
-      if (!currentQuiz || !sceneInstanceRef.current) return;
+      if (!currentQuiz) return;
 
-      // Extract nodeId from the current quiz context if needed
+      // Extract nodeId from the current quiz context
+      // Find the key (nodeId) in mockQuizzes whose value matches currentQuiz
       const currentNodeId = Object.keys(mockQuizzes).find(key => mockQuizzes[key] === currentQuiz);
 
 
@@ -138,9 +160,11 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
       }
       setShowQuiz(false); // Hide quiz after answering
 
-      // Re-enable the node in Phaser
+      // Re-enable the node in Phaser only if we found the ID
       if(currentNodeId) {
         reEnableNode(currentNodeId);
+      } else {
+        console.warn("Could not find Node ID for the submitted quiz to re-enable.");
       }
 
       setCurrentQuiz(null); // Reset current quiz
@@ -151,6 +175,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
       const currentNodeId = Object.keys(mockQuizzes).find(key => mockQuizzes[key] === currentQuiz);
       if(currentNodeId) {
           reEnableNode(currentNodeId); // Re-enable node if quiz is closed without answering
+      } else {
+           console.warn("Could not find Node ID for the closed quiz to re-enable.");
       }
       setCurrentQuiz(null);
   }
@@ -159,7 +185,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     <div className="flex flex-col min-h-screen">
       <Header />
       <main className="flex-grow container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-2 text-primary">Map: {decodeURIComponent(resolvedParams.mapId)}</h1>
+        {/* Check if resolvedParams exists before accessing properties */}
+        <h1 className="text-2xl font-bold mb-2 text-primary">Map: {resolvedParams ? decodeURIComponent(resolvedParams.mapId) : 'Loading...'}</h1>
         <p className="text-muted-foreground mb-6">Room Code: <span className="font-mono bg-muted px-2 py-1 rounded">XYZ123</span> (Placeholder)</p>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 relative">
@@ -168,7 +195,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
              <div
                 ref={gameContainerRef}
                 id="phaser-game-container"
-                className="w-full h-[600px] bg-muted border border-muted-foreground overflow-hidden"
+                className="w-full h-[600px] bg-muted border border-muted-foreground overflow-hidden rounded-lg shadow-md" // Added rounded corners and shadow
              >
                  {/* Phaser canvas will be injected here */}
              </div>
@@ -181,17 +208,17 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 <CardTitle>Session Leaderboard</CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[550px] pr-4">
+                <ScrollArea className="h-[550px] pr-4"> {/* Adjusted height slightly */}
                   <ul className="space-y-4">
                     {players.map((player, index) => (
-                      <li key={player.id} className="flex items-center justify-between">
+                      <li key={player.id} className="flex items-center justify-between p-2 rounded hover:bg-secondary transition-colors"> {/* Added hover effect */}
                         <div className="flex items-center gap-3">
-                          <span className="font-semibold w-6 text-center">{index + 1}</span>
+                          <span className="font-semibold w-6 text-center text-muted-foreground">{index + 1}</span>
                           <Avatar className="h-8 w-8">
                             <AvatarImage src={player.avatar} alt={player.name} />
                             <AvatarFallback>{player.name.substring(0, 1)}</AvatarFallback>
                           </Avatar>
-                          <span className={`flex-1 truncate ${player.name === 'You' ? 'font-bold' : ''}`}>{player.name}</span>
+                          <span className={`flex-1 truncate ${player.name === 'You' ? 'font-bold text-primary' : ''}`}>{player.name}</span> {/* Highlight 'You' */}
                         </div>
                         <span className="font-semibold text-primary">{player.score} pts</span>
                       </li>
@@ -204,26 +231,26 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
            {/* Quiz Modal/Overlay */}
            {showQuiz && currentQuiz && (
-                <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-10 p-4">
-                    <Card className="w-full max-w-lg shadow-xl">
+                <div className="absolute inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-10 p-4"> {/* Increased blur */}
+                    <Card className="w-full max-w-lg shadow-xl border-primary border-2"> {/* Added primary border */}
                          <CardHeader>
                             <div className="flex justify-between items-center">
-                               <CardTitle>Quiz Time!</CardTitle>
+                               <CardTitle className="text-primary">Quiz Time!</CardTitle> {/* Styled title */}
                                <Button variant="ghost" size="icon" onClick={closeQuiz}>
-                                   <X className="h-5 w-5" />
+                                   <X className="h-5 w-5 text-muted-foreground hover:text-foreground" /> {/* Styled close button */}
                                </Button>
                            </div>
 
                         </CardHeader>
                         <CardContent>
-                           <p className="mb-4 text-lg font-medium">{currentQuiz.question}</p>
+                           <p className="mb-6 text-lg font-medium">{currentQuiz.question}</p> {/* Increased margin */}
                             {currentQuiz.type === 'multiple-choice' && (
                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                    {currentQuiz.options.map((option, index) => (
                                        <Button
                                            key={index}
                                            variant="outline"
-                                           className="justify-start text-left h-auto py-3"
+                                           className="justify-start text-left h-auto py-3 hover:bg-accent hover:text-accent-foreground transition-colors duration-200" // Added hover effect
                                            onClick={() => handleAnswerSubmit(option)}
                                         >
                                            {option}
@@ -234,11 +261,13 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                             {currentQuiz.type === 'short-answer' && (
                                 <div>
                                     {/* Consider using react-hook-form for better state management */}
-                                    <input id="short-answer-input" type="text" placeholder="Type your answer..." className="w-full p-2 border rounded mb-2" />
+                                    <input id="short-answer-input" type="text" placeholder="Type your answer..." className="w-full p-2 border rounded mb-3 focus:ring-primary focus:border-primary" /> {/* Added focus style */}
                                     <Button onClick={() => {
                                         const inputElement = document.getElementById('short-answer-input') as HTMLInputElement;
                                         handleAnswerSubmit(inputElement?.value || '');
-                                    }}>Submit</Button>
+                                    }}
+                                    className="w-full" // Make submit button full width
+                                    >Submit</Button>
                                 </div>
                             )}
                            {/* TODO: Add rendering for other quiz types */}
