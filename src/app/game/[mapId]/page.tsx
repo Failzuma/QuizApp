@@ -12,9 +12,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input'; // Import Input component
-import { X, Trophy, Target } from 'lucide-react'; // Added Trophy icon for HUD, Target for current node
+import { X, Trophy, Target, CheckSquare } from 'lucide-react'; // Added Trophy, Target, CheckSquare icons
 import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
-import type { NodeInteractionCallback } from '@/game/scenes/MainScene'; // Import the type only
+import type { NodeInteractionCallback, NodesCountCallback } from '@/game/scenes/MainScene'; // Import the types only
 import { useToast } from "@/hooks/use-toast"; // Import useToast
 import { useIsMobile } from "@/hooks/use-mobile"; // Import useIsMobile hook
 import type nipplejs from 'nipplejs'; // Import nipplejs type only for type checking
@@ -53,6 +53,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   const [currentQuiz, setCurrentQuiz] = useState<typeof mockQuizzes[string] | null>(null);
   const [currentQuizNodeId, setCurrentQuizNodeId] = useState<string | null>(null); // Store nodeId when quiz opens
   const [shortAnswerValue, setShortAnswerValue] = useState(''); // State for short answer input
+  const [remainingNodesCount, setRemainingNodesCount] = useState<number | null>(null); // State for remaining nodes
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const sceneInstanceRef = useRef<MainSceneType | null>(null); // Use the imported type
@@ -92,6 +93,13 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         sceneInstanceRef.current?.clearNodeHighlight(nodeId); // Clear highlight if no quiz
     }
   };
+
+  // Callback function for Phaser scene to update node count
+  const handleNodesCountUpdate: NodesCountCallback = (count) => {
+      console.log(`React received nodes count update: ${count}`);
+      setRemainingNodesCount(count);
+  };
+
 
   // Function to signal Phaser to remove a node
   const removeNode = (nodeId: string) => {
@@ -138,7 +146,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             const { default: MainScene } = await import('@/game/scenes/MainScene');
 
             // Create the scene instance *before* the game config
-            // Pass necessary data (mapId, callback) to the scene via its constructor or an init method
+            // Pass necessary data (mapId, callbacks) to the scene via its constructor or an init method
             const mainSceneInstance = new MainScene();
 
             const config: Phaser.Types.Core.GameConfig = {
@@ -182,14 +190,15 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                       // Initialize the scene with mapId and callback AFTER it's ready
                       // Check if scene has an init method that accepts data, otherwise use a custom method
                       if (typeof scene.initScene === 'function') {
-                        scene.initScene({ mapId: resolvedParams.mapId }, handleNodeInteraction);
+                        // Pass both callbacks
+                        scene.initScene({ mapId: resolvedParams.mapId }, handleNodeInteraction, handleNodesCountUpdate);
                         sceneInstanceRef.current = scene; // Store the scene instance reference
                         console.log("Scene initialized with data in postBoot.");
                       } else {
                         console.error("MainScene does not have an initScene method.");
                          // Fallback or alternative setup if initScene isn't defined
                          sceneInstanceRef.current = scene;
-                         console.warn("Used legacy setInteractionCallback. Consider adding initScene(data, callback) to MainScene.");
+                         console.warn("Used legacy setInteractionCallback. Consider adding initScene(data, callback, countCallback) to MainScene.");
                       }
 
                   } else {
@@ -197,7 +206,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                       // Attempt to get by index if key fails (less reliable)
                       const sceneByIndex = bootedGame.scene.scenes[0];
                        if (sceneByIndex instanceof MainScene && typeof sceneByIndex.initScene === 'function') {
-                           sceneByIndex.initScene({ mapId: resolvedParams.mapId }, handleNodeInteraction);
+                           sceneByIndex.initScene({ mapId: resolvedParams.mapId }, handleNodeInteraction, handleNodesCountUpdate);
                            sceneInstanceRef.current = sceneByIndex;
                            console.log("Scene initialized via index in postBoot.");
                        } else {
@@ -406,6 +415,17 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
            <p className="text-xs text-muted-foreground">Room Code: <span className="font-mono bg-muted px-1 py-0.5 rounded">XYZ123</span></p>
         </div>
 
+        {/* Node Count Overlay / HUD Element */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
+            <div className="flex items-center gap-2">
+                 <CheckSquare className="h-5 w-5 text-primary" />
+                 <span className="text-sm font-medium">Nodes Remaining:</span>
+                 <span className="font-bold text-lg text-primary">
+                     {remainingNodesCount !== null ? remainingNodesCount : '--'}
+                 </span>
+            </div>
+        </div>
+
 
         {/* Sidebar - Leaderboard as HUD Overlay */}
         <div className="absolute top-4 right-4 z-10 w-64"> {/* Adjust width as needed */}
@@ -503,3 +523,4 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     </div>
   );
 }
+

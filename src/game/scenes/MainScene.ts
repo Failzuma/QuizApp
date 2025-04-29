@@ -4,6 +4,9 @@ import type { JoystickManager, JoystickOutputData } from 'nipplejs'; // Import t
 
 // Define the types for the interaction callback
 export type NodeInteractionCallback = (nodeId: string) => void;
+// Define the type for the nodes count callback
+export type NodesCountCallback = (count: number) => void;
+
 
 // Define the type for initialization data
 export interface SceneInitData {
@@ -16,6 +19,7 @@ export default class MainScene extends Phaser.Scene {
   private wasdKeys?: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key; }; // Added for WASD
   private nodes?: Phaser.Physics.Arcade.StaticGroup;
   private onNodeInteract!: NodeInteractionCallback; // Should be set in initScene
+  private onNodesCountUpdate!: NodesCountCallback; // Callback for node count
   private mapId?: string;
   private currentBackground?: Phaser.GameObjects.Image;
   private playerSpeed = 200; // Player movement speed
@@ -35,19 +39,24 @@ export default class MainScene extends Phaser.Scene {
     super({ key: 'MainScene' });
   }
 
-  // Method to receive initialization data and the callback
-  initScene(data: SceneInitData, callback: NodeInteractionCallback) {
+  // Method to receive initialization data and the callbacks
+  initScene(data: SceneInitData, interactCallback: NodeInteractionCallback, countCallback: NodesCountCallback) {
     this.mapId = data.mapId;
-    this.onNodeInteract = callback;
-    console.log(`MainScene initialized for map: ${this.mapId} with callback.`);
+    this.onNodeInteract = interactCallback;
+    this.onNodesCountUpdate = countCallback; // Store the count callback
+    console.log(`MainScene initialized for map: ${this.mapId} with interact and count callbacks.`);
 
-    // Safety check
+    // Safety check for interaction callback
     if (!this.onNodeInteract) {
         console.error("MainScene initScene called without a valid onNodeInteract callback!");
-        // Provide a default fallback or throw an error
         this.onNodeInteract = (nodeId) => console.warn(`Default onNodeInteract called for node: ${nodeId}`);
     }
-  }
+    // Safety check for count callback
+    if (!this.onNodesCountUpdate) {
+        console.error("MainScene initScene called without a valid onNodesCountUpdate callback!");
+        this.onNodesCountUpdate = (count) => console.warn(`Default onNodesCountUpdate called with count: ${count}`);
+    }
+}
 
 
   preloadAssets() {
@@ -283,6 +292,8 @@ export default class MainScene extends Phaser.Scene {
            // }
             return true;
         });
+        // Initial node count update
+        this.updateAndEmitNodeCount();
     }
 
 
@@ -334,9 +345,12 @@ export default class MainScene extends Phaser.Scene {
     });
 
 
-     // Check if the callback was set correctly
+     // Check if the callbacks were set correctly
      if (!this.onNodeInteract) {
         console.error("CRITICAL: onNodeInteract callback is NOT set in create() after initialization!");
+     }
+     if (!this.onNodesCountUpdate) {
+        console.error("CRITICAL: onNodesCountUpdate callback is NOT set in create() after initialization!");
      }
      console.log("MainScene create method finished.");
   }
@@ -399,6 +413,7 @@ export default class MainScene extends Phaser.Scene {
      if (nodeToRemove) {
        console.log(`Removing node: ${nodeId}`);
        nodeToRemove.destroy(); // Remove the node from the scene and the group
+       this.updateAndEmitNodeCount(); // Update count after removing
      } else {
         console.warn(`Node with ID ${nodeId} not found to remove.`);
      }
@@ -542,6 +557,13 @@ export default class MainScene extends Phaser.Scene {
         }
     }
 
+    // Helper method to get current node count and emit update
+    private updateAndEmitNodeCount() {
+        if (!this.nodes || !this.onNodesCountUpdate) return;
+        const count = this.nodes.countActive(true); // Count only active nodes
+        this.onNodesCountUpdate(count);
+    }
+
 
   update(time: number, delta: number) {
     // Only process player movement if input is enabled
@@ -662,3 +684,4 @@ export default class MainScene extends Phaser.Scene {
       super.destroy();
   }
 }
+
