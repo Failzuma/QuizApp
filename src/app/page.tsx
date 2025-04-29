@@ -33,7 +33,7 @@ export default function Home() {
             <PixelMapIcon />
           </div>
           <h1 className="text-4xl md:text-5xl font-bold mb-4 text-primary">
-            Welcome to PetaPolnep!
+            Welcome to QuizApp!
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
             Explore interactive learning maps, conquer quizzes, and collaborate with classmates in a fun, gamified environment. Let's start the adventure!

@@ -7,8 +7,8 @@ import { Toaster } from "@/components/ui/toaster"; // Import Toaster
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' }); // Configure Inter font
 
 export const metadata: Metadata = {
-  title: 'PetaPolnep - Gamified Learning',
-  description: 'Interactive and gamified learning platform for Polnep students.',
+  title: 'QuizApp - Gamified Learning', // Updated title
+  description: 'Interactive and gamified learning platform.', // Simplified description
 };
 
 export default function RootLayout({

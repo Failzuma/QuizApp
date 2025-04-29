@@ -13,11 +13,13 @@ import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LogIn } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast"; // Import useToast
+import { Separator } from '@/components/ui/separator'; // Import Separator
+import { cn } from '@/lib/utils'; // Import cn
 
 export default function LoginPage() {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [rememberMe, setRememberMe] = React.useState(false); // State for checkbox
+  const [rememberMe, setRememberMe] = React.useState(true); // Default rememberMe to true
   const [isLoading, setIsLoading] = React.useState(false);
   const router = useRouter(); // Initialize router
   const { toast } = useToast(); // Initialize toast
@@ -30,7 +32,7 @@ export default function LoginPage() {
     console.log('Login attempt with:', { email, password, rememberMe });
 
     // Hardcoded admin check
-    if (email === 'admin@polnep.ac.id' && password === 'admin') {
+    if (email === 'admin' && password === 'admin') {
         console.log('Admin login successful');
         toast({
             title: "Admin Login Successful",
@@ -72,16 +74,16 @@ export default function LoginPage() {
                 <LogIn className="h-8 w-8 text-primary" />
               </div>
             <CardTitle>Welcome Back!</CardTitle>
-            <CardDescription>Log in to continue your learning adventure.</CardDescription>
+            <CardDescription>Log in to continue your learning adventure on QuizApp.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">Email or Username</Label>
                 <Input
                   id="email"
-                  type="email"
-                  placeholder="mahasiswa@polnep.ac.id or admin@polnep.ac.id"
+                  type="text" // Change to text to allow 'admin' username
+                  placeholder="Enter your email or username (e.g., admin)"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -94,7 +96,7 @@ export default function LoginPage() {
                   id="password"
                   type="password"
                   required
-                  placeholder="Enter your password" // Added placeholder
+                  placeholder="Enter your password (e.g., admin)" // Updated placeholder
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}
@@ -151,17 +153,4 @@ export default function LoginPage() {
       <Footer />
     </div>
   );
-}
-
-// Simple separator component (can be moved to ui/separator later if needed)
-function Separator({ className }: { className?: string }) {
-    return <div className={cn('shrink-0 bg-border h-[1px] w-full', className)} />;
-}
-
-// cn utility function (should already exist in lib/utils)
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
 }

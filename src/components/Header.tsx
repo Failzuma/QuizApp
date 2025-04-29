@@ -27,7 +27,7 @@ export function Header() {
           <Link href="/" className="mr-6 flex items-center space-x-2">
             <PixelMapIcon />
             <span className="hidden font-bold sm:inline-block">
-              PetaPolnep
+              QuizApp
             </span>
           </Link>
           <nav className="flex items-center gap-6 text-sm">
@@ -50,7 +50,7 @@ export function Header() {
                     className="flex items-center space-x-2 mb-4"
                   >
                     <PixelMapIcon />
-                    <span className="font-bold">PetaPolnep</span>
+                    <span className="font-bold">QuizApp</span>
                   </Link>
                   <nav className="flex flex-col gap-4">
                     {navItems.map((item) => (

@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserPlus } from 'lucide-react';
+import { Separator } from '@/components/ui/separator'; // Import Separator
+import { cn } from '@/lib/utils'; // Import cn
 
 export default function RegisterPage() {
   const [name, setName] = React.useState('');
@@ -53,7 +55,7 @@ export default function RegisterPage() {
                <UserPlus className="h-8 w-8 text-primary" />
             </div>
             <CardTitle>Create Your Account</CardTitle>
-            <CardDescription>Join PetaPolnep and start your learning journey!</CardDescription>
+            <CardDescription>Join QuizApp and start your learning journey!</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleRegister} className="space-y-4">
@@ -74,7 +76,7 @@ export default function RegisterPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="mahasiswa@polnep.ac.id"
+                  placeholder="your.email@example.com" // Updated placeholder
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -126,18 +128,4 @@ export default function RegisterPage() {
       <Footer />
     </div>
   );
-}
-
-
-// Simple separator component (can be moved to ui/separator later if needed)
-function Separator({ className }: { className?: string }) {
-    return <div className={cn('shrink-0 bg-border h-[1px] w-full', className)} />;
-}
-
-// cn utility function (should already exist in lib/utils)
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
 }
