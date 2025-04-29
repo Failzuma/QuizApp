@@ -414,33 +414,41 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             </div>
          )}
 
-        {/* Map Details and Node Count Overlay */}
-        <div className="absolute top-4 left-4 z-10 bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow flex flex-col gap-2">
-           <h1 className="text-lg font-bold text-primary">Map: {resolvedParams ? decodeURIComponent(resolvedParams.mapId) : 'Loading...'}</h1>
-           <p className="text-xs text-muted-foreground">Room Code: <span className="font-mono bg-muted px-1 py-0.5 rounded">XYZ123</span></p>
+         {/* Top-Left HUD Elements Container */}
+         <div className="absolute top-4 left-4 z-10 flex flex-col gap-4"> {/* Use flex-col and gap */}
 
-           {/* Node Count Display */}
-           {showNodeCount && (
-                <div className="flex items-center gap-2 border-t border-border pt-2">
-                    <CheckSquare className="h-5 w-5 text-primary" />
-                    <span className="text-sm font-medium">Nodes Remaining:</span>
-                    <span className="font-bold text-lg text-primary">
-                        {remainingNodesCount !== null ? remainingNodesCount : '--'}
-                    </span>
-                </div>
-            )}
-           {/* Show/Hide Node Count Button */}
-            <Button
-                variant="ghost"
-                size="sm" // Make button smaller
-                onClick={toggleNodeCountVisibility}
-                className="w-full text-primary hover:bg-background/90 mt-1 flex items-center justify-center gap-1"
-                title={showNodeCount ? "Hide Node Count" : "Show Node Count"}
-                >
-                {showNodeCount ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                <span className="text-xs">{showNodeCount ? "Hide" : "Show"} Count</span>
-            </Button>
-        </div>
+            {/* Map Details Overlay */}
+            <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
+              <h1 className="text-lg font-bold text-primary">Map: {resolvedParams ? decodeURIComponent(resolvedParams.mapId) : 'Loading...'}</h1>
+              <p className="text-xs text-muted-foreground">Room Code: <span className="font-mono bg-muted px-1 py-0.5 rounded">XYZ123</span></p>
+            </div>
+
+            {/* Node Count and Toggle Button Overlay */}
+            <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow flex flex-col items-start gap-2"> {/* items-start to align content left */}
+                {/* Node Count Display */}
+                {showNodeCount && (
+                    <div className="flex items-center gap-2">
+                        <CheckSquare className="h-5 w-5 text-primary" />
+                        <span className="text-sm font-medium">Nodes Remaining:</span>
+                        <span className="font-bold text-lg text-primary">
+                            {remainingNodesCount !== null ? remainingNodesCount : '--'}
+                        </span>
+                    </div>
+                )}
+                {/* Show/Hide Node Count Button */}
+                <Button
+                    variant="ghost"
+                    size="sm" // Make button smaller
+                    onClick={toggleNodeCountVisibility}
+                    className="w-full text-primary hover:bg-background/90 flex items-center justify-center gap-1" // Removed mt-1 as gap handles spacing
+                    title={showNodeCount ? "Hide Node Count" : "Show Node Count"}
+                    >
+                    {showNodeCount ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    <span className="text-xs">{showNodeCount ? "Hide" : "Show"} Count</span>
+                </Button>
+            </div>
+
+         </div>
 
 
         {/* Sidebar - Leaderboard as HUD Overlay */}
@@ -539,3 +547,6 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     </div>
   );
 }
+
+
+    
