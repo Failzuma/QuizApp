@@ -12,7 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input'; // Import Input component
-import { X, Trophy, Target, CheckSquare } from 'lucide-react'; // Added Trophy, Target, CheckSquare icons
+import { X, Trophy, Target, CheckSquare, Eye, EyeOff } from 'lucide-react'; // Added Trophy, Target, CheckSquare, Eye, EyeOff icons
 import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
 import type { NodeInteractionCallback, NodesCountCallback } from '@/game/scenes/MainScene'; // Import the types only
 import { useToast } from "@/hooks/use-toast"; // Import useToast
@@ -54,6 +54,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   const [currentQuizNodeId, setCurrentQuizNodeId] = useState<string | null>(null); // Store nodeId when quiz opens
   const [shortAnswerValue, setShortAnswerValue] = useState(''); // State for short answer input
   const [remainingNodesCount, setRemainingNodesCount] = useState<number | null>(null); // State for remaining nodes
+  const [showNodeCount, setShowNodeCount] = useState(true); // State to control node count visibility
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const sceneInstanceRef = useRef<MainSceneType | null>(null); // Use the imported type
@@ -381,6 +382,10 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
       setShortAnswerValue(''); // Clear short answer input
   }
 
+  const toggleNodeCountVisibility = () => {
+    setShowNodeCount(prevState => !prevState);
+  }
+
   return (
     // Make the main container flex column and take full screen height minus header (approx)
     <div className="flex flex-col h-screen overflow-hidden">
@@ -416,14 +421,25 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         </div>
 
         {/* Node Count Overlay / HUD Element */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
-            <div className="flex items-center gap-2">
-                 <CheckSquare className="h-5 w-5 text-primary" />
-                 <span className="text-sm font-medium">Nodes Remaining:</span>
-                 <span className="font-bold text-lg text-primary">
-                     {remainingNodesCount !== null ? remainingNodesCount : '--'}
-                 </span>
-            </div>
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2">
+            {showNodeCount && (
+                <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow flex items-center gap-2">
+                    <CheckSquare className="h-5 w-5 text-primary" />
+                    <span className="text-sm font-medium">Nodes Remaining:</span>
+                    <span className="font-bold text-lg text-primary">
+                        {remainingNodesCount !== null ? remainingNodesCount : '--'}
+                    </span>
+                </div>
+            )}
+            <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleNodeCountVisibility}
+                className="bg-background/70 backdrop-blur-sm text-primary hover:bg-background/90"
+                title={showNodeCount ? "Hide Node Count" : "Show Node Count"}
+                >
+                {showNodeCount ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </Button>
         </div>
 
 
