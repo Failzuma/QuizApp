@@ -12,6 +12,7 @@ export interface SceneInitData {
 export default class MainScene extends Phaser.Scene {
   private player?: Phaser.Physics.Arcade.Sprite;
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasdKeys?: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key; }; // Added for WASD
   private nodes?: Phaser.Physics.Arcade.StaticGroup;
   private onNodeInteract!: NodeInteractionCallback; // Should be set in initScene
   private mapId?: string;
@@ -281,6 +282,11 @@ export default class MainScene extends Phaser.Scene {
     // --- Physics and Input ---
     this.physics.add.overlap(this.player, this.nodes, this.handleNodeOverlap, undefined, this);
     this.cursors = this.input.keyboard?.createCursorKeys();
+    // Add WASD keys
+    if (this.input.keyboard) {
+        this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key; };
+    }
+
 
     // --- Camera ---
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08); // Smoother follow
@@ -379,9 +385,10 @@ export default class MainScene extends Phaser.Scene {
 
 
   update(time: number, delta: number) {
-    if (!this.cursors || !this.player || !(this.player instanceof Phaser.Physics.Arcade.Sprite) || !this.player.body) {
+    if (!this.player || !(this.player instanceof Phaser.Physics.Arcade.Sprite) || !this.player.body) {
       return;
     }
+    if (!this.cursors && !this.wasdKeys) return; // Do nothing if input is not ready
 
     // Reset velocity
     this.player.setVelocity(0);
@@ -389,24 +396,31 @@ export default class MainScene extends Phaser.Scene {
     let isMoving = false;
     let facing = currentAnimKey?.replace('walk_', '').replace('idle_', '') || 'down'; // Track direction
 
+    // Combine Cursor and WASD input checks
+    const leftPressed = this.cursors?.left.isDown || this.wasdKeys?.A.isDown;
+    const rightPressed = this.cursors?.right.isDown || this.wasdKeys?.D.isDown;
+    const upPressed = this.cursors?.up.isDown || this.wasdKeys?.W.isDown;
+    const downPressed = this.cursors?.down.isDown || this.wasdKeys?.S.isDown;
+
+
     // Horizontal movement
-    if (this.cursors.left.isDown) {
+    if (leftPressed) {
       this.player.setVelocityX(-this.playerSpeed);
       facing = 'left';
       isMoving = true;
-    } else if (this.cursors.right.isDown) {
+    } else if (rightPressed) {
       this.player.setVelocityX(this.playerSpeed);
       facing = 'right';
       isMoving = true;
     }
 
     // Vertical movement
-    if (this.cursors.up.isDown) {
+    if (upPressed) {
       this.player.setVelocityY(-this.playerSpeed);
       // Only update facing if not moving horizontally
       if (!isMoving) facing = 'up';
       isMoving = true;
-    } else if (this.cursors.down.isDown) {
+    } else if (downPressed) {
       this.player.setVelocityY(this.playerSpeed);
        // Only update facing if not moving horizontally
       if (!isMoving) facing = 'down';
