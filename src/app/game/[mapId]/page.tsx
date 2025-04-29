@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
 import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
 import type { NodeInteractionCallback } from '@/game/scenes/MainScene'; // Import the type only
+import { useToast } from "@/hooks/use-toast"; // Import useToast
 
 // Mock Data - Replace with real-time data later
 const mockPlayers = [
@@ -44,9 +45,11 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   const [players, setPlayers] = useState(mockPlayers.sort((a, b) => b.score - a.score));
   const [showQuiz, setShowQuiz] = useState(false);
   const [currentQuiz, setCurrentQuiz] = useState<typeof mockQuizzes[string] | null>(null);
+  const [currentQuizNodeId, setCurrentQuizNodeId] = useState<string | null>(null); // Store nodeId when quiz opens
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const sceneInstanceRef = useRef<MainSceneType | null>(null); // Use the imported type
+  const { toast } = useToast(); // Initialize toast
 
 
   // Callback function for Phaser scene to trigger quiz
@@ -55,21 +58,22 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     const quizData = mockQuizzes[nodeId];
     if (quizData) {
         setCurrentQuiz(quizData);
+        setCurrentQuizNodeId(nodeId); // Store the nodeId associated with this quiz
         setShowQuiz(true);
     } else {
         console.warn(`No quiz found for nodeId: ${nodeId}`);
-        // Optionally re-enable the node immediately if no quiz is found
-        reEnableNode(nodeId);
+        // If no quiz, immediately signal Phaser to remove the non-interactive node
+        removeNode(nodeId);
     }
   };
 
-  // Function to signal Phaser to re-enable a node
-  const reEnableNode = (nodeId: string) => {
+  // Function to signal Phaser to remove a node
+  const removeNode = (nodeId: string) => {
     // Ensure scene instance is available before calling method
     if (sceneInstanceRef.current) {
-        sceneInstanceRef.current.reEnableNode(nodeId);
+        sceneInstanceRef.current.removeNode(nodeId);
     } else {
-        console.warn("Scene instance ref not set, cannot re-enable node.");
+        console.warn("Scene instance ref not set, cannot remove node.");
     }
   };
 
@@ -102,7 +106,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 default: 'arcade',
                 arcade: {
                   gravity: { y: 0 },
-                  // debug: process.env.NODE_ENV === 'development' // Optional debug drawing
+                   // debug: process.env.NODE_ENV === 'development' // Optional debug drawing
                 },
               },
               // Pass the scene *instance* here. Phaser will call its init, preload, create methods.
@@ -132,7 +136,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                       } else {
                         console.error("MainScene does not have an initScene method.");
                          // Fallback or alternative setup if initScene isn't defined
-                         scene.setInteractionCallback(handleNodeInteraction); // Assuming old method exists
+                         // scene.setInteractionCallback(handleNodeInteraction); // Assuming old method exists
                          sceneInstanceRef.current = scene;
                          console.warn("Used legacy setInteractionCallback. Consider adding initScene(data, callback) to MainScene.");
                       }
@@ -157,7 +161,10 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             gameInstanceRef.current = game;
         }
 
-        initPhaser();
+        // Check if navigator is defined (runs only on client-side)
+        if (typeof navigator !== 'undefined') {
+           initPhaser();
+        }
 
 
         return () => {
@@ -171,15 +178,19 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
   const handleAnswerSubmit = (selectedAnswer: string) => {
       console.log('Answer submitted:', selectedAnswer);
-      if (!currentQuiz) return;
+      if (!currentQuiz || !currentQuizNodeId) return; // Ensure we have quiz and node ID
 
-      // Extract nodeId from the current quiz context
-      // Find the key (nodeId) in mockQuizzes whose value matches currentQuiz
-      const currentNodeId = Object.keys(mockQuizzes).find(key => mockQuizzes[key] === currentQuiz);
+      const isCorrect = selectedAnswer === currentQuiz.correctAnswer;
+
+      // Display feedback toast
+      toast({
+          title: isCorrect ? "Correct!" : "Wrong!",
+          description: isCorrect ? "Good job!" : `The correct answer was: ${currentQuiz.correctAnswer}`,
+          variant: isCorrect ? "default" : "destructive", // Use default (usually green/blue) for correct, destructive (red) for wrong
+      });
 
 
-      // TODO: Implement actual answer validation and scoring logic
-      if (selectedAnswer === currentQuiz.correctAnswer) {
+      if (isCorrect) {
           console.log("Correct!");
           // Update player score (example)
           setPlayers(prevPlayers => prevPlayers.map(p =>
@@ -191,25 +202,20 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
       }
       setShowQuiz(false); // Hide quiz after answering
 
-      // Re-enable the node in Phaser only if we found the ID
-      if(currentNodeId) {
-          reEnableNode(currentNodeId);
-      } else {
-        console.warn("Could not find Node ID for the submitted quiz to re-enable.");
-      }
+      // Remove the node from Phaser now that it's answered
+      removeNode(currentQuizNodeId);
 
       setCurrentQuiz(null); // Reset current quiz
+      setCurrentQuizNodeId(null); // Reset current node ID
   };
 
   const closeQuiz = () => {
       setShowQuiz(false);
-      const currentNodeId = Object.keys(mockQuizzes).find(key => mockQuizzes[key] === currentQuiz);
-      if(currentNodeId) {
-          reEnableNode(currentNodeId); // Re-enable node if quiz is closed without answering
-      } else {
-           console.warn("Could not find Node ID for the closed quiz to re-enable.");
-      }
+      // If quiz is closed without answering, we don't remove the node
+      // unless we explicitly want that behavior. Currently, it remains.
+      console.log("Quiz closed without answering.");
       setCurrentQuiz(null);
+      setCurrentQuizNodeId(null);
   }
 
   return (

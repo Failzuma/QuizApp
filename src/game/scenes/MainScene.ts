@@ -14,7 +14,7 @@ export default class MainScene extends Phaser.Scene {
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private nodes?: Phaser.Physics.Arcade.StaticGroup;
   private onNodeInteract!: NodeInteractionCallback; // Should be set in initScene
-  private disabledNodes: Set<string> = new Set(); // Keep track of disabled nodes
+  // private disabledNodes: Set<string> = new Set(); // Keep track of disabled nodes -> No longer needed, nodes are removed
   private mapId?: string;
   private currentBackground?: Phaser.GameObjects.Image;
   private playerSpeed = 200; // Player movement speed
@@ -43,14 +43,14 @@ export default class MainScene extends Phaser.Scene {
   }
 
 
-  // Separate method for setting callback (used by React postBoot)
-  // Deprecated in favor of initScene, but kept for potential fallback
-  setInteractionCallback(callback: NodeInteractionCallback) {
-    if (!this.onNodeInteract) { // Only set if not already set by initScene
-        this.onNodeInteract = callback;
-        console.warn("Interaction callback set via legacy setInteractionCallback.");
-    }
-  }
+  // // Separate method for setting callback (used by React postBoot)
+  // // Deprecated in favor of initScene, but kept for potential fallback
+  // setInteractionCallback(callback: NodeInteractionCallback) {
+  //   if (!this.onNodeInteract) { // Only set if not already set by initScene
+  //       this.onNodeInteract = callback;
+  //       console.warn("Interaction callback set via legacy setInteractionCallback.");
+  //   }
+  // }
 
   preloadAssets() {
     // Preload assets common to all maps
@@ -72,9 +72,29 @@ export default class MainScene extends Phaser.Scene {
     if (this.mapId) {
         const backgroundAssetKey = `${this.mapId}_background`;
         // Assuming backgrounds are in public/assets/images/backgrounds/
-        const backgroundUrl = `/assets/images/backgrounds/${this.mapId}_background.png`;
+        // Provide distinct URLs for different map IDs
+        let backgroundUrl = `/assets/images/backgrounds/default_background.png`; // Default
+        if (this.mapId === 'map1') {
+            backgroundUrl = `/assets/images/backgrounds/map1_background.png`;
+        } else if (this.mapId === 'map2') {
+            backgroundUrl = `/assets/images/backgrounds/map2_background.png`;
+        } // Add more else if blocks for other map IDs
+        // Fallback for other maps if not explicitly defined
+        else if (this.mapId === 'map3') {
+           backgroundUrl = `/assets/images/backgrounds/map3_background.png`; // Example
+        }
+
+        // Only load if the specific file exists or use a default
         this.load.image(backgroundAssetKey, backgroundUrl);
         console.log(`Attempting to preload background: ${backgroundAssetKey} from ${backgroundUrl}`);
+
+        // Error handling for image loading
+        this.load.once(`fileerror-image-${backgroundAssetKey}`, (file: Phaser.Loader.File) => {
+            console.error(`Failed to load background image: ${file.key} from ${file.url}. Loading default.`);
+            if (backgroundAssetKey !== 'default_background') {
+                this.load.image('default_background', '/assets/images/backgrounds/default_background.png');
+            }
+        });
     } else {
         // Load a default background if mapId is somehow missing
         this.load.image('default_background', '/assets/images/backgrounds/default_background.png');
@@ -91,7 +111,7 @@ export default class MainScene extends Phaser.Scene {
 
     this.preloadAssets();
 
-     // Log errors if assets still fail to load
+     // Log general load errors
      this.load.on('loaderror', (file: Phaser.Loader.File) => {
          console.error(`Failed to process file: ${file.key} from ${file.url}. Error type: ${file.xhrLoader?.statusText}`);
      });
@@ -154,10 +174,10 @@ export default class MainScene extends Phaser.Scene {
            frames: [
                { key: 'node', frame: 0 }, // Closed/dim
                { key: 'node', frame: 1 }, // Open/bright
-               { key: 'node', frame: 0 }, // Closed/dim (to make it blink)
            ],
-           frameRate: 2, // Slow blink
-           repeat: -1 // Loop forever
+           frameRate: 2, // Slow blink/pulse
+           repeat: -1, // Loop forever
+           yoyo: true // Automatically reverses the animation
        });
        console.log("Node animations created.");
    }
@@ -166,11 +186,26 @@ export default class MainScene extends Phaser.Scene {
     console.log("MainScene create method started.");
 
     // --- Background ---
-    const backgroundAssetKey = this.textures.exists(`${this.mapId}_background`)
-        ? `${this.mapId}_background`
-        : 'default_background';
+    // Determine the correct background key, falling back to default if necessary
+    let backgroundAssetKey = `default_background`;
+    if (this.mapId && this.textures.exists(`${this.mapId}_background`)) {
+        backgroundAssetKey = `${this.mapId}_background`;
+    } else if (this.mapId && !this.textures.exists(`${this.mapId}_background`) && this.textures.exists('default_background')) {
+        console.warn(`Map-specific background '${this.mapId}_background' not found, using default.`);
+        backgroundAssetKey = 'default_background';
+    } else if (!this.textures.exists('default_background')) {
+        // Critical error if even default background is missing
+        console.error("Default background texture 'default_background' not loaded. Check path/network.");
+        this.cameras.main.setBackgroundColor('#E3F2FD'); // Fallback color
+        // Set arbitrary world bounds
+        const defaultWidth = 1600;
+        const defaultHeight = 1200;
+        this.physics.world.setBounds(0, 0, defaultWidth, defaultHeight);
+        this.cameras.main.setBounds(0, 0, defaultWidth, defaultHeight);
+        console.warn(`Using fallback background color and bounds: ${defaultWidth}x${defaultHeight}`);
+    }
 
-    // Check again if the intended or default background actually loaded
+    // Add the background image if the key is valid
     if (this.textures.exists(backgroundAssetKey)) {
         this.currentBackground = this.add.image(0, 0, backgroundAssetKey).setOrigin(0, 0);
         const bgWidth = this.currentBackground.width;
@@ -179,14 +214,13 @@ export default class MainScene extends Phaser.Scene {
         this.cameras.main.setBounds(0, 0, bgWidth, bgHeight);
         console.log(`Set background ${backgroundAssetKey} and world bounds: ${bgWidth}x${bgHeight}`);
     } else {
-        console.error(`Background texture '${backgroundAssetKey}' still not loaded after preload. Check path/network. Setting default color.`);
-        this.cameras.main.setBackgroundColor('#E3F2FD'); // Fallback light blue
-        // Set arbitrary world bounds if no background
-        const defaultWidth = 1600;
-        const defaultHeight = 1200;
+        // This block should ideally not be reached if the logic above is correct,
+        // but serves as a final fallback.
+        console.error(`Background texture '${backgroundAssetKey}' could not be set. Fallback to color.`);
+        this.cameras.main.setBackgroundColor('#E3F2FD');
+        const defaultWidth = 1600; const defaultHeight = 1200;
         this.physics.world.setBounds(0, 0, defaultWidth, defaultHeight);
         this.cameras.main.setBounds(0, 0, defaultWidth, defaultHeight);
-         console.warn(`Using fallback background color and bounds: ${defaultWidth}x${defaultHeight}`);
     }
 
     // --- Player ---
@@ -246,9 +280,9 @@ export default class MainScene extends Phaser.Scene {
         // Play animation on all active nodes initially
         this.nodes.children.iterate(child => {
             const node = child as Phaser.Physics.Arcade.Sprite;
-            if (!this.disabledNodes.has(node.getData('nodeId'))) {
+           // if (!this.disabledNodes.has(node.getData('nodeId'))) { // No longer needed
                node.anims.play('node_active', true);
-            }
+           // }
             return true;
         });
     }
@@ -296,44 +330,39 @@ export default class MainScene extends Phaser.Scene {
      const spriteNode = node as Phaser.Physics.Arcade.Sprite;
      const nodeId = spriteNode.getData('nodeId') as string;
 
-     // Check if the node is already disabled or if the callback is missing
-     if (!nodeId || !this.onNodeInteract || this.disabledNodes.has(nodeId)) {
+     // Check if the callback is missing
+     if (!nodeId || !this.onNodeInteract) {
        if(!this.onNodeInteract) console.error("Node overlap detected, but onNodeInteract callback is missing!");
        return;
      }
 
      console.log(`Player overlapped with node: ${nodeId}`);
-     this.onNodeInteract(nodeId); // Call the callback function passed from React
 
-     // Disable the node visually and physically
-     spriteNode.disableBody(true, true); // Hides and disables physics
-     spriteNode.setAlpha(0.3); // Make it visually distinct as disabled
-     spriteNode.stop(); // Stop any running animation (like 'node_active')
-     this.disabledNodes.add(nodeId); // Track disabled node
-     console.log(`Node ${nodeId} disabled.`);
+     // Important: Disable the node's body *immediately* to prevent multiple triggers
+     // while the React quiz is open. We'll remove it fully later via removeNode.
+     spriteNode.disableBody(false, false); // Disable physics but keep visible initially
+
+     this.onNodeInteract(nodeId); // Call the callback function passed from React to show the quiz
+
+     // The node is now visually present but non-interactive.
+     // It will be fully removed by the removeNode function called from React after the quiz.
    }
 
-   // Method called from React to re-enable a node
-   reEnableNode(nodeId: string) {
+   // Method called from React to completely remove a node after it's answered
+   removeNode(nodeId: string) {
      if (!this.nodes) return;
 
-     const nodeToEnable = this.nodes.getChildren().find(node => {
+     const nodeToRemove = this.nodes.getChildren().find(node => {
        const spriteNode = node as Phaser.Physics.Arcade.Sprite;
        return spriteNode.getData('nodeId') === nodeId;
      }) as Phaser.Physics.Arcade.Sprite | undefined;
 
-     if (nodeToEnable && this.disabledNodes.has(nodeId)) {
-       // Re-enable body at its original position, make visible and interactive again
-       nodeToEnable.enableBody(true, nodeToEnable.x, nodeToEnable.y, true, true);
-       nodeToEnable.setAlpha(1); // Restore full visibility
-       nodeToEnable.anims.play('node_active', true); // Restart animation
-       this.disabledNodes.delete(nodeId); // Remove from disabled set
-       console.log(`Node ${nodeId} re-enabled.`);
-     } else if (!nodeToEnable) {
-        console.warn(`Node with ID ${nodeId} not found to re-enable.`);
+     if (nodeToRemove) {
+       console.log(`Removing node: ${nodeId}`);
+       nodeToRemove.destroy(); // Remove the node from the scene and the group
+       // No need to manage a disabled set anymore
      } else {
-        // Node exists but wasn't in the disabled set
-        console.log(`Node ${nodeId} was already enabled.`);
+        console.warn(`Node with ID ${nodeId} not found to remove.`);
      }
    }
 
@@ -401,4 +430,3 @@ export default class MainScene extends Phaser.Scene {
     // });
   }
 }
-
