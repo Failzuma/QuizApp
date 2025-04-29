@@ -40,7 +40,7 @@ export default function Home() {
           </p>
           <div className="space-x-4">
             <Button size="lg" asChild>
-              <Link href="/dashboard">Explore Maps</Link>
+              <Link href="/dashboard">Explore Quiz</Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
               <Link href="/register">Get Started</Link>

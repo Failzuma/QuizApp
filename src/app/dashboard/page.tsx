@@ -24,7 +24,7 @@ export default function Dashboard() {
 
          <div className="mb-8">
            <Button>
-             <PlayCircle className="mr-2 h-4 w-4" /> Create New Room
+             <PlayCircle className="mr-2 h-4 w-4" /> Create New Quiz
            </Button>
            {/* Add Input/Button to Join Room by Code later */}
          </div>
@@ -46,7 +46,7 @@ export default function Dashboard() {
               <div className="p-4 pt-0 mt-auto">
                  <Button className="w-full" asChild>
                    {/* Link will eventually go to the game/room creation for this map */}
-                   <Link href={`/game/${map.id}`}>Start Exploring</Link>
+                   <Link href={`/game/${map.id}`}>Start Quiz</Link>
                  </Button>
               </div>
             </Card>
