@@ -67,7 +67,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
   // Callback function for Phaser scene to trigger quiz
   const handleNodeInteraction: NodeInteractionCallback = (nodeId) => {
-    console.log(`React received interaction from node: ${nodeId}`);
+    console.log(`[React] Received interaction from node: ${nodeId}`);
     const quizData = mockQuizzes[nodeId];
     if (quizData) {
         setCurrentQuiz(quizData);
@@ -76,6 +76,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         setShortAnswerValue(''); // Clear previous short answer
 
         // --- CRITICAL: Disable Phaser player input when quiz opens ---
+        console.log("[React] Disabling player input for quiz.");
         sceneInstanceRef.current?.disablePlayerInput();
         // --- Highlight the node in Phaser ---
         sceneInstanceRef.current?.highlightNode(nodeId);
@@ -85,11 +86,12 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
              setTimeout(() => shortAnswerInputRef.current?.focus(), 100);
         }
     } else {
-        console.warn(`No quiz found for nodeId: ${nodeId}`);
+        console.warn(`[React] No quiz found for nodeId: ${nodeId}`);
         // If no quiz, immediately signal Phaser to remove the non-interactive node
         // This case might not be desirable, maybe just re-enable? Let's re-enable for now.
         reEnableNode(nodeId);
         // --- Ensure input is enabled if no quiz is shown ---
+        console.log("[React] Enabling player input as no quiz was found.");
         sceneInstanceRef.current?.enablePlayerInput();
         sceneInstanceRef.current?.clearNodeHighlight(nodeId); // Clear highlight if no quiz
     }
@@ -97,7 +99,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
   // Callback function for Phaser scene to update node count
   const handleNodesCountUpdate: NodesCountCallback = (count) => {
-      console.log(`React received nodes count update: ${count}`);
+      console.log(`[React] Received nodes count update: ${count}`);
       setRemainingNodesCount(count);
   };
 
@@ -105,29 +107,32 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   // Function to signal Phaser to remove a node
   const removeNode = (nodeId: string) => {
     // Ensure scene instance is available before calling method
-    if (sceneInstanceRef.current) {
+    console.log(`[React] Requesting removal of node: ${nodeId}`);
+    if (sceneInstanceRef.current && typeof sceneInstanceRef.current.removeNode === 'function') {
         sceneInstanceRef.current.removeNode(nodeId);
     } else {
-        console.warn("Scene instance ref not set, cannot remove node.");
+        console.warn("[React] Scene instance ref not set or removeNode not available, cannot remove node.");
     }
   };
 
   // Function to signal Phaser to re-enable a node (only used when closing quiz now)
   const reEnableNode = (nodeId: string) => {
+        console.log(`[React] Requesting re-enable of node: ${nodeId}`);
        if (sceneInstanceRef.current && typeof sceneInstanceRef.current.reEnableNode === 'function') {
            sceneInstanceRef.current.reEnableNode(nodeId);
            sceneInstanceRef.current.clearNodeHighlight(nodeId); // Also clear highlight
        } else {
-           console.warn("Scene instance ref not set or reEnableNode not available, cannot re-enable node.");
+           console.warn("[React] Scene instance ref not set or reEnableNode not available, cannot re-enable node.");
        }
    };
 
     // Function to signal Phaser to start cooldown
     const startInteractionCooldown = (duration: number) => {
+        console.log(`[React] Requesting interaction cooldown start: ${duration}ms`);
         if (sceneInstanceRef.current && typeof sceneInstanceRef.current.startInteractionCooldown === 'function') {
             sceneInstanceRef.current.startInteractionCooldown(duration);
         } else {
-            console.warn("Scene instance ref not set or startInteractionCooldown not available.");
+            console.warn("[React] Scene instance ref not set or startInteractionCooldown not available.");
         }
     };
 
@@ -139,8 +144,10 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         const initPhaser = async () => {
             // Ensure we have the mapId before initializing
             if (!resolvedParams || !gameContainerRef.current || gameInstanceRef.current) {
+              console.log("[Phaser Init] Skipping initialization: missing params, container, or game already exists.");
               return;
             }
+            console.log("[Phaser Init] Starting initialization...");
 
             // Dynamically import Phaser and the Scene
             const Phaser = await import('phaser');
@@ -185,54 +192,61 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
               // Use postBoot to safely access the scene instance after Phaser setup
               callbacks: {
                 postBoot: (bootedGame) => {
+                   console.log("[Phaser Init] postBoot callback triggered.");
                   // Access the scene instance using the key provided in its constructor (default is the class name)
                   const scene = bootedGame.scene.getScene('MainScene') as MainSceneType; // Cast to the imported type
                   if (scene) {
                       // Initialize the scene with mapId and callback AFTER it's ready
                       // Check if scene has an init method that accepts data, otherwise use a custom method
                       if (typeof scene.initScene === 'function') {
+                        console.log("[Phaser Init] Calling initScene with mapId and callbacks.");
                         // Pass both callbacks
                         scene.initScene({ mapId: resolvedParams.mapId }, handleNodeInteraction, handleNodesCountUpdate);
                         sceneInstanceRef.current = scene; // Store the scene instance reference
-                        console.log("Scene initialized with data in postBoot.");
+                        console.log("[Phaser Init] Scene initialized successfully in postBoot.");
                       } else {
-                        console.error("MainScene does not have an initScene method.");
+                        console.error("[Phaser Init] MainScene does not have an initScene method.");
                          // Fallback or alternative setup if initScene isn't defined
                          sceneInstanceRef.current = scene;
-                         console.warn("Used legacy setInteractionCallback. Consider adding initScene(data, callback, countCallback) to MainScene.");
+                         console.warn("[Phaser Init] Used legacy setInteractionCallback. Consider adding initScene(data, callback, countCallback) to MainScene.");
                       }
 
                   } else {
-                      console.error("MainScene not found after boot. Ensure scene key matches.");
+                      console.error("[Phaser Init] MainScene not found after boot. Ensure scene key matches.");
                       // Attempt to get by index if key fails (less reliable)
                       const sceneByIndex = bootedGame.scene.scenes[0];
                        if (sceneByIndex instanceof MainScene && typeof sceneByIndex.initScene === 'function') {
+                           console.log("[Phaser Init] Found scene by index, calling initScene.");
                            sceneByIndex.initScene({ mapId: resolvedParams.mapId }, handleNodeInteraction, handleNodesCountUpdate);
                            sceneInstanceRef.current = sceneByIndex;
-                           console.log("Scene initialized via index in postBoot.");
+                           console.log("[Phaser Init] Scene initialized via index in postBoot.");
                        } else {
-                          console.error("Could not get scene instance by key or index, or initScene missing.");
+                          console.error("[Phaser Init] Could not get scene instance by key or index, or initScene missing.");
                        }
                   }
                 }
               }
             };
-
+            console.log("[Phaser Init] Creating Phaser.Game instance.");
             game = new Phaser.Game(config);
             gameInstanceRef.current = game;
         }
 
         // Check if navigator is defined (runs only on client-side)
         if (typeof navigator !== 'undefined') {
+           console.log("[Phaser Init] Running on client, calling initPhaser.");
            initPhaser();
+        } else {
+            console.log("[Phaser Init] Running on server or navigator undefined, skipping initPhaser.");
         }
 
 
         return () => {
-          console.log('Destroying Phaser game instance');
+          console.log('[Phaser Cleanup] Destroying Phaser game instance...');
           gameInstanceRef.current?.destroy(true);
           gameInstanceRef.current = null;
           sceneInstanceRef.current = null; // Clear scene ref
+          console.log('[Phaser Cleanup] Phaser game instance destroyed.');
         };
       // Add resolvedParams to dependencies to re-initialize if it changes (e.g., navigating between maps)
       }, [resolvedParams]);
@@ -244,7 +258,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
         const initJoystick = async () => {
             if (isMobile && joystickZoneRef.current && !joystickManagerRef.current) {
-                console.log("Initializing joystick...");
+                console.log("[Joystick] Initializing joystick...");
                 // Dynamically import nipplejs
                 const nipplejs = (await import('nipplejs')).default;
 
@@ -265,7 +279,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                     if (sceneInstanceRef.current?.joystickInput) {
                          sceneInstanceRef.current.joystickInput(data);
                      } else {
-                         console.warn("Scene instance or joystickInput method not available.");
+                         console.warn("[Joystick] Scene instance or joystickInput method not available.");
                      }
                 });
 
@@ -279,19 +293,23 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                             direction: undefined, // Indicate stop
                         });
                      } else {
-                         console.warn("Scene instance or joystickInput method not available.");
+                         console.warn("[Joystick] Scene instance or joystickInput method not available.");
                      }
                 });
 
-                 console.log("Joystick initialized.");
+                 console.log("[Joystick] Joystick initialized.");
             }
         };
 
-        initJoystick();
+        // Only init if we are on the client
+        if (typeof window !== 'undefined') {
+            initJoystick();
+        }
+
 
         return () => {
             if (joystickManagerRef.current) {
-                console.log("Destroying joystick...");
+                console.log("[Joystick] Destroying joystick...");
                 joystickManagerRef.current.destroy();
                 joystickManagerRef.current = null;
             }
@@ -320,8 +338,14 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     };
 
     const handleAnswerSubmit = (selectedAnswer: string) => {
-      console.log('Answer submitted:', selectedAnswer);
-      if (!currentQuiz || !currentQuizNodeId) return; // Ensure we have quiz and node ID
+      console.log(`[React] Answer submitted: "${selectedAnswer}". Current quiz node ID: ${currentQuizNodeId}`);
+      if (!currentQuiz || !currentQuizNodeId) {
+          console.error("[React] Cannot submit answer: currentQuiz or currentQuizNodeId is null.");
+          return;
+      }
+
+      // Capture nodeId before state potentially changes
+      const nodeIdToRemove = currentQuizNodeId;
 
       const isCorrect = selectedAnswer.trim().toLowerCase() === currentQuiz.correctAnswer.toLowerCase(); // Trim and ignore case for short answers
 
@@ -334,49 +358,61 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
       // Update player score only if correct
       if (isCorrect) {
-          console.log("Correct!");
+          console.log("[React] Answer Correct!");
           setPlayers(prevPlayers => prevPlayers.map(p =>
               p.name === 'You' ? { ...p, score: p.score + 10 } : p
           ).sort((a, b) => b.score - a.score));
       } else {
-          console.log("Incorrect!");
+          console.log("[React] Answer Incorrect!");
           // No score update for wrong answers
       }
 
       // --- CRITICAL: Remove the node from Phaser REGARDLESS of the answer ---
-      removeNode(currentQuizNodeId);
+      // Ensure we have the nodeId captured before resetting state
+      if (nodeIdToRemove) {
+          removeNode(nodeIdToRemove);
+      } else {
+          console.error("[React] Could not remove node because nodeIdToRemove was null!");
+      }
 
-      setShowQuiz(false); // Hide quiz after answering
+      // Hide quiz UI
+      setShowQuiz(false);
 
        // --- CRITICAL: Re-enable Phaser player input ---
+       console.log("[React] Re-enabling player input after quiz submission.");
        sceneInstanceRef.current?.enablePlayerInput();
 
-      setCurrentQuiz(null); // Reset current quiz
+       // Reset quiz state AFTER ensuring node removal was requested
+      setCurrentQuiz(null);
       setCurrentQuizNodeId(null); // Reset current node ID
       setShortAnswerValue(''); // Clear short answer input
   };
 
   const closeQuiz = () => {
+      // Capture node ID before resetting
+      const nodeIdToReEnable = currentQuizNodeId;
+      console.log(`[React] Quiz closed without answering. Node to potentially re-enable: ${nodeIdToReEnable}`);
+
       setShowQuiz(false);
+
       // If quiz is closed without answering, we need to re-enable the node
       // and start the interaction cooldown.
-      console.log("Quiz closed without answering.");
-
-      if (currentQuizNodeId && sceneInstanceRef.current) {
+      if (nodeIdToReEnable && sceneInstanceRef.current) {
          // Re-enable the node's physics body
-         reEnableNode(currentQuizNodeId); // This now also clears highlight
+         reEnableNode(nodeIdToReEnable); // This now also clears highlight
 
          // Start the interaction cooldown in Phaser
          startInteractionCooldown(1500); // 1.5 seconds cooldown
 
       } else {
-          console.warn("Could not find node ID to re-enable/apply cooldown.");
+          console.warn("[React] Could not find node ID to re-enable/apply cooldown, or scene ref missing.");
       }
 
-
         // --- CRITICAL: Re-enable Phaser player input ---
+       console.log("[React] Re-enabling player input after closing quiz.");
        sceneInstanceRef.current?.enablePlayerInput();
 
+       // Reset quiz state
       setCurrentQuiz(null);
       setCurrentQuizNodeId(null);
       setShortAnswerValue(''); // Clear short answer input
@@ -547,6 +583,5 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     </div>
   );
 }
-
 
     

@@ -44,23 +44,24 @@ export default class MainScene extends Phaser.Scene {
     this.mapId = data.mapId;
     this.onNodeInteract = interactCallback;
     this.onNodesCountUpdate = countCallback; // Store the count callback
-    console.log(`MainScene initialized for map: ${this.mapId} with interact and count callbacks.`);
+    console.log(`[Phaser Scene] MainScene initialized for map: ${this.mapId} with interact and count callbacks.`);
 
     // Safety check for interaction callback
     if (!this.onNodeInteract) {
-        console.error("MainScene initScene called without a valid onNodeInteract callback!");
-        this.onNodeInteract = (nodeId) => console.warn(`Default onNodeInteract called for node: ${nodeId}`);
+        console.error("[Phaser Scene] initScene called without a valid onNodeInteract callback!");
+        this.onNodeInteract = (nodeId) => console.warn(`[Phaser Scene] Default onNodeInteract called for node: ${nodeId}`);
     }
     // Safety check for count callback
     if (!this.onNodesCountUpdate) {
-        console.error("MainScene initScene called without a valid onNodesCountUpdate callback!");
-        this.onNodesCountUpdate = (count) => console.warn(`Default onNodesCountUpdate called with count: ${count}`);
+        console.error("[Phaser Scene] initScene called without a valid onNodesCountUpdate callback!");
+        this.onNodesCountUpdate = (count) => console.warn(`[Phaser Scene] Default onNodesCountUpdate called with count: ${count}`);
     }
 }
 
 
   preloadAssets() {
     // Preload assets common to all maps
+    console.log("[Phaser Scene] Preloading common assets...");
     // Player spritesheet: 512x256, 32x32 frames (16 columns x 8 rows = 128 frames, 0-127)
     this.load.spritesheet('player', '/assets/images/player_placeholder_32.png', {
       frameWidth: 32,
@@ -90,29 +91,32 @@ export default class MainScene extends Phaser.Scene {
         else if (this.mapId === 'map3') {
            backgroundUrl = `/assets/images/backgrounds/map3_background.png`; // Example
         }
-
+        console.log(`[Phaser Scene] Attempting to preload background: ${backgroundAssetKey} from ${backgroundUrl}`);
         // Only load if the specific file exists or use a default
         this.load.image(backgroundAssetKey, backgroundUrl);
-        console.log(`Attempting to preload background: ${backgroundAssetKey} from ${backgroundUrl}`);
+
 
         // Error handling for image loading
         this.load.once(`fileerror-image-${backgroundAssetKey}`, (file: Phaser.Loader.File) => {
-            console.error(`Failed to load background image: ${file.key} from ${file.url}. Loading default.`);
-            if (backgroundAssetKey !== 'default_background') {
+            console.error(`[Phaser Scene] Failed to load background image: ${file.key} from ${file.url}. Loading default.`);
+            if (backgroundAssetKey !== 'default_background' && !this.textures.exists('default_background')) {
                 this.load.image('default_background', '/assets/images/backgrounds/default_background.png');
             }
         });
     } else {
         // Load a default background if mapId is somehow missing
-        this.load.image('default_background', '/assets/images/backgrounds/default_background.png');
-        console.warn("mapId missing during preload, loading default background.");
+         console.warn("[Phaser Scene] mapId missing during preload, attempting to load default background.");
+        if (!this.textures.exists('default_background')) {
+             this.load.image('default_background', '/assets/images/backgrounds/default_background.png');
+        }
+
     }
   }
 
   preload() {
-    console.log("MainScene preload started.");
+    console.log("[Phaser Scene] MainScene preload started.");
     if (!this.mapId) {
-        console.error("Cannot preload assets without mapId. Ensure initScene is called before preload.");
+        console.error("[Phaser Scene] Cannot preload assets without mapId. Ensure initScene is called before preload.");
         this.mapId = 'default'; // Set a default to try loading *something*
     }
 
@@ -120,13 +124,13 @@ export default class MainScene extends Phaser.Scene {
 
      // Log general load errors
      this.load.on('loaderror', (file: Phaser.Loader.File) => {
-         console.error(`Failed to process file: ${file.key} from ${file.url}. Error type: ${file.xhrLoader?.statusText}`);
+         console.error(`[Phaser Scene Load Error] Failed to load file: ${file.key} from ${file.url}. Error type: ${file.type}, Status: ${file.xhrLoader?.status} ${file.xhrLoader?.statusText}`);
      });
      this.load.on('filecomplete', (key: string, type: string, data: any) => {
         // console.log(`Asset loaded: ${key}`); // Can be noisy, enable if needed
      });
      this.load.on('complete', () => {
-        console.log("Asset loading complete.");
+        console.log("[Phaser Scene] Asset loading complete.");
      });
   }
 
@@ -171,7 +175,7 @@ export default class MainScene extends Phaser.Scene {
           frameRate: frameRate,
           repeat: -1
       });
-      console.log("Player animations created.");
+      console.log("[Phaser Scene] Player animations created.");
   }
 
    createNodeAnimations() {
@@ -186,11 +190,11 @@ export default class MainScene extends Phaser.Scene {
            repeat: -1, // Loop forever
            yoyo: true // Automatically reverses the animation
        });
-       console.log("Node animations created.");
+       console.log("[Phaser Scene] Node animations created.");
    }
 
   create() {
-    console.log("MainScene create method started.");
+    console.log("[Phaser Scene] MainScene create method started.");
 
     // --- Background ---
     // Determine the correct background key, falling back to default if necessary
@@ -198,18 +202,18 @@ export default class MainScene extends Phaser.Scene {
     if (this.mapId && this.textures.exists(`${this.mapId}_background`)) {
         backgroundAssetKey = `${this.mapId}_background`;
     } else if (this.mapId && !this.textures.exists(`${this.mapId}_background`) && this.textures.exists('default_background')) {
-        console.warn(`Map-specific background '${this.mapId}_background' not found, using default.`);
+        console.warn(`[Phaser Scene] Map-specific background '${this.mapId}_background' not found, using default.`);
         backgroundAssetKey = 'default_background';
     } else if (!this.textures.exists('default_background')) {
         // Critical error if even default background is missing
-        console.error("Default background texture 'default_background' not loaded. Check path/network.");
+        console.error("[Phaser Scene] Default background texture 'default_background' not loaded. Check path/network.");
         this.cameras.main.setBackgroundColor('#E3F2FD'); // Fallback color
         // Set arbitrary world bounds
         const defaultWidth = 1600;
         const defaultHeight = 1200;
         this.physics.world.setBounds(0, 0, defaultWidth, defaultHeight);
         this.cameras.main.setBounds(0, 0, defaultWidth, defaultHeight);
-        console.warn(`Using fallback background color and bounds: ${defaultWidth}x${defaultHeight}`);
+        console.warn(`[Phaser Scene] Using fallback background color and bounds: ${defaultWidth}x${defaultHeight}`);
     }
 
     // Add the background image if the key is valid
@@ -227,11 +231,11 @@ export default class MainScene extends Phaser.Scene {
         this.minZoom = Math.max(gameWidth / bgWidth, gameHeight / bgHeight, 0.1); // Ensure minZoom is at least 0.1
         this.minZoom = Phaser.Math.Clamp(this.minZoom, 0.1, 1); // Clamp between 0.1 and 1
 
-        console.log(`Set background ${backgroundAssetKey} and world bounds: ${bgWidth}x${bgHeight}. Min zoom calculated: ${this.minZoom}`);
+        console.log(`[Phaser Scene] Set background ${backgroundAssetKey} and world bounds: ${bgWidth}x${bgHeight}. Min zoom calculated: ${this.minZoom}`);
     } else {
         // This block should ideally not be reached if the logic above is correct,
         // but serves as a final fallback.
-        console.error(`Background texture '${backgroundAssetKey}' could not be set. Fallback to color.`);
+        console.error(`[Phaser Scene] Background texture '${backgroundAssetKey}' could not be set. Fallback to color.`);
         this.cameras.main.setBackgroundColor('#E3F2FD');
         const defaultWidth = 1600; const defaultHeight = 1200;
         this.physics.world.setBounds(0, 0, defaultWidth, defaultHeight);
@@ -242,7 +246,7 @@ export default class MainScene extends Phaser.Scene {
     // --- Player ---
     // Ensure player texture exists before creating sprite
     if (!this.textures.exists('player')) {
-         console.error("Player texture 'player' not loaded or available at create time. Check preload path and network issues.");
+         console.error("[Phaser Scene] Player texture 'player' not loaded or available at create time. Check preload path and network issues.");
           // Optionally add a visual placeholder if texture fails
           const placeholder = this.add.graphics();
           placeholder.fillStyle(0x1A237E, 1); // Dark blue
@@ -260,8 +264,14 @@ export default class MainScene extends Phaser.Scene {
     this.player.setScale(this.playerScale); // Make player larger
     this.player.setCollideWorldBounds(true);
     // Adjust hitbox relative to the scaled size if needed, e.g., smaller than visual bounds
-    this.player.setBodySize(this.player.width * 0.7, this.player.height * 0.8); // Adjusted for scaled size
-    this.player.body?.setOffset(this.player.width * 0.15, this.player.height * 0.1); // Center offset if needed
+    // Note: Body size is in original pixels *before* scale. Adjust offset accordingly.
+    const hitboxWidth = this.player.width * 0.7;
+    const hitboxHeight = this.player.height * 0.8;
+    this.player.setBodySize(hitboxWidth, hitboxHeight);
+    // Offset is also relative to original size. Center it based on the new hitbox size.
+    const offsetX = (this.player.width - hitboxWidth) / 2;
+    const offsetY = (this.player.height - hitboxHeight) / 2 + (this.player.height * 0.1); // Adjust Y offset slightly down
+    this.player.setOffset(offsetX, offsetY);
 
 
     this.createPlayerAnimations(); // Create animations
@@ -270,9 +280,10 @@ export default class MainScene extends Phaser.Scene {
     // --- Nodes ---
     this.nodes = this.physics.add.staticGroup();
     if (!this.textures.exists('node')) {
-      console.error("Node texture 'node' not loaded or available at create time.");
+      console.error("[Phaser Scene] Node texture 'node' not loaded or available at create time.");
       // Don't stop execution, but nodes won't appear
     } else {
+        console.log("[Phaser Scene] Creating nodes...");
         // Example node placement - adjust based on your map designs
         const node1X = this.physics.world.bounds.width * 0.3;
         const node1Y = this.physics.world.bounds.height * 0.4;
@@ -288,7 +299,12 @@ export default class MainScene extends Phaser.Scene {
             const node = child as Phaser.Physics.Arcade.Sprite;
             node.setScale(nodeScale);
             // Refresh body AFTER scaling to ensure physics body matches visual size
-            node.refreshBody();
+            // Note: Body size calculation might need adjustment if origin changes or for complex shapes
+            const body = node.body as Phaser.Physics.Arcade.StaticBody;
+            // Resetting body size based on scaled dimensions
+            // body.setSize(node.width * nodeScale, node.height * nodeScale);
+            // Refreshing might be sufficient if scale affects display size correctly
+             node.refreshBody();
             return true;
         });
 
@@ -303,6 +319,7 @@ export default class MainScene extends Phaser.Scene {
         });
         // Initial node count update
         this.updateAndEmitNodeCount();
+        console.log(`[Phaser Scene] Initial node count: ${this.nodes.countActive(true)}`);
     }
 
 
@@ -311,6 +328,7 @@ export default class MainScene extends Phaser.Scene {
 
     // Setup keyboard input listeners
     if (this.input.keyboard) {
+        console.log("[Phaser Scene] Setting up keyboard input...");
         this.cursors = this.input.keyboard.createCursorKeys();
         this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key; };
 
@@ -318,6 +336,7 @@ export default class MainScene extends Phaser.Scene {
         // Example: Stop spacebar propagation ONLY when keyboard input is disabled (quiz active)
         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE).on('down', (event: KeyboardEvent) => {
              if (!this.playerInputEnabled) { // Only interfere when UI is active
+                 // console.log("[Input] Preventing Space propagation.");
                  event.stopPropagation();
              }
         });
@@ -335,10 +354,12 @@ export default class MainScene extends Phaser.Scene {
 
 
     // --- Camera ---
+    console.log("[Phaser Scene] Setting up camera...");
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08); // Smoother follow
     // Set initial zoom, clamped by the calculated minZoom
     const clampedInitialZoom = Phaser.Math.Clamp(this.initialCameraZoomLevel, this.minZoom, this.maxZoom);
     this.cameras.main.setZoom(clampedInitialZoom);
+     console.log(`[Phaser Scene] Initial camera zoom set to: ${clampedInitialZoom}`);
 
     // --- Zoom Controls ---
     this.input.on('wheel', (pointer: Phaser.Input.Pointer, gameObjects: Phaser.GameObjects.GameObject[], deltaX: number, deltaY: number, deltaZ: number) => {
@@ -353,17 +374,18 @@ export default class MainScene extends Phaser.Scene {
         // Clamp zoom level using the dynamically calculated minZoom
         newZoom = Phaser.Math.Clamp(newZoom, this.minZoom, this.maxZoom);
         this.cameras.main.zoomTo(newZoom, 100); // Smooth zoom over 100ms
+         // console.log(`Zoom changed to: ${newZoom}`);
     });
 
 
      // Check if the callbacks were set correctly
      if (!this.onNodeInteract) {
-        console.error("CRITICAL: onNodeInteract callback is NOT set in create() after initialization!");
+        console.error("[Phaser Scene] CRITICAL: onNodeInteract callback is NOT set in create() after initialization!");
      }
      if (!this.onNodesCountUpdate) {
-        console.error("CRITICAL: onNodesCountUpdate callback is NOT set in create() after initialization!");
+        console.error("[Phaser Scene] CRITICAL: onNodesCountUpdate callback is NOT set in create() after initialization!");
      }
-     console.log("MainScene create method finished.");
+     console.log("[Phaser Scene] MainScene create method finished.");
   }
 
    handleNodeOverlap(player: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile,
@@ -371,48 +393,57 @@ export default class MainScene extends Phaser.Scene {
    {
      // Type guard to ensure node is a sprite with data and body
      if (!(node instanceof Phaser.Physics.Arcade.Sprite) || !node.body) {
+       // console.log("[Overlap] Ignored non-sprite overlap");
        return;
      }
 
      // Check if interaction is currently on cooldown
      if (this.interactionOnCooldown) {
-         // console.log("Interaction on cooldown, ignoring overlap."); // Can be noisy
+          // console.log("[Overlap] Interaction on cooldown, ignoring overlap."); // Can be noisy
          return;
      }
 
      // Check if the node's body is already disabled (prevent rapid re-triggering)
      if (!node.body.enable) {
+          // console.log("[Overlap] Node body already disabled, ignoring overlap.");
          return;
      }
 
      const spriteNode = node as Phaser.Physics.Arcade.Sprite;
      const nodeId = spriteNode.getData('nodeId') as string;
 
-     // Check if the callback is missing
+     // Check if the callback is missing or nodeId is invalid
      if (!nodeId || !this.onNodeInteract) {
-       if(!this.onNodeInteract) console.error("Node overlap detected, but onNodeInteract callback is missing!");
+       if(!this.onNodeInteract) console.error("[Overlap] Node overlap detected, but onNodeInteract callback is missing!");
+       if(!nodeId) console.error("[Overlap] Overlapped node is missing 'nodeId' data!");
        return;
      }
 
-     console.log(`Player overlapped with node: ${nodeId}`);
+     console.log(`[Overlap] Player overlapped with node: ${nodeId}`);
 
      // Important: Disable the node's body *immediately* to prevent multiple triggers
-     // while the React quiz is open. We'll remove it fully later via removeNode if correct.
-     spriteNode.disableBody(false, false); // Disable physics but keep visible initially
+     // while the React quiz is open. Keep it visible.
+     console.log(`[Overlap] Disabling physics body for node: ${nodeId}`);
+     spriteNode.disableBody(false, false); // Disable physics but keep visible
 
-     this.onNodeInteract(nodeId); // Call the callback function passed from React to show the quiz
+     // Trigger the interaction callback to React
+     this.onNodeInteract(nodeId);
 
      // Highlight the node visually
      this.highlightNode(nodeId);
 
      // The node is now visually present but non-interactive.
-     // It will be fully removed by the removeNode function (if answered correctly)
-     // or re-enabled by reEnableNode (if closed or answered incorrectly).
+     // It will be fully removed by the removeNode function (after quiz answer)
+     // or re-enabled by reEnableNode (if quiz closed without answering).
    }
 
    // Method called from React to completely remove a node after it's answered (correctly OR incorrectly)
    removeNode(nodeId: string) {
-     if (!this.nodes) return;
+     console.log(`[Phaser Scene] Attempting to remove node: ${nodeId}`);
+     if (!this.nodes) {
+         console.error("[Phaser Scene] Cannot remove node: nodes group is null.");
+         return;
+     }
 
      this.clearNodeHighlight(nodeId); // Ensure highlight is cleared before removing
 
@@ -422,62 +453,80 @@ export default class MainScene extends Phaser.Scene {
      }) as Phaser.Physics.Arcade.Sprite | undefined;
 
      if (nodeToRemove) {
-       console.log(`Removing node: ${nodeId}`);
-       nodeToRemove.destroy(); // Remove the node from the scene and the group
-       this.updateAndEmitNodeCount(); // Update count after removing
+        // Double-check if the node still exists and hasn't been destroyed already
+        if (nodeToRemove.active) {
+             console.log(`[Phaser Scene] Found active node ${nodeId}. Destroying...`);
+             nodeToRemove.destroy(); // Remove the node from the scene and the group
+             this.updateAndEmitNodeCount(); // Update count after removing
+             console.log(`[Phaser Scene] Node ${nodeId} destroyed. New count: ${this.nodes.countActive(true)}`);
+        } else {
+            console.warn(`[Phaser Scene] Node ${nodeId} found but was already inactive/destroyed. Skipping removal.`);
+        }
      } else {
-        console.warn(`Node with ID ${nodeId} not found to remove.`);
+        console.warn(`[Phaser Scene] Node with ID ${nodeId} not found to remove.`);
      }
    }
 
    // Method called from React to re-enable a node if quiz is closed without answering
    reEnableNode(nodeId: string) {
-       if (!this.nodes) return;
+        console.log(`[Phaser Scene] Attempting to re-enable node: ${nodeId}`);
+       if (!this.nodes) {
+            console.error("[Phaser Scene] Cannot re-enable node: nodes group is null.");
+            return;
+       };
 
         this.clearNodeHighlight(nodeId); // Ensure highlight is cleared
 
        const nodeToReEnable = this.nodes.getChildren().find(node => {
            const spriteNode = node as Phaser.Physics.Arcade.Sprite;
+           // Find node by ID, even if it was disabled (but not destroyed)
            return spriteNode.getData('nodeId') === nodeId;
        }) as Phaser.Physics.Arcade.Sprite | undefined;
 
        if (nodeToReEnable) {
            // Only re-enable if the node actually still exists (hasn't been destroyed by removeNode)
            if (nodeToReEnable.active) {
-               console.log(`Re-enabling node: ${nodeId}`);
-               nodeToReEnable.enableBody(false, 0, 0, true, true); // Re-enable physics body
+               // Check if body *needs* re-enabling
+               if(!nodeToReEnable.body?.enable){
+                    console.log(`[Phaser Scene] Re-enabling physics body for node: ${nodeId}`);
+                    nodeToReEnable.enableBody(false, 0, 0, true, true); // Re-enable physics body
+               } else {
+                   console.log(`[Phaser Scene] Node ${nodeId} body was already enabled. No action needed.`);
+               }
                // Ensure animation restarts if needed
                if (!nodeToReEnable.anims.isPlaying) {
+                  console.log(`[Phaser Scene] Restarting 'node_active' animation for node: ${nodeId}`);
                   nodeToReEnable.anims.play('node_active', true);
                }
            } else {
-               console.log(`Node ${nodeId} was already destroyed, cannot re-enable.`);
+               console.log(`[Phaser Scene] Node ${nodeId} was already destroyed, cannot re-enable.`);
            }
        } else {
-           console.warn(`Node with ID ${nodeId} not found to re-enable.`);
+           console.warn(`[Phaser Scene] Node with ID ${nodeId} not found to re-enable.`);
        }
    }
 
    // Method called from React to start the interaction cooldown
    startInteractionCooldown(duration: number) {
         this.interactionOnCooldown = true;
-        console.log(`Interaction cooldown started for ${duration}ms.`);
+        console.log(`[Phaser Scene] Interaction cooldown started for ${duration}ms.`);
 
         // Clear any existing cooldown timer
         if (this.cooldownTimerEvent) {
+            // console.log("[Phaser Scene] Removing existing cooldown timer.");
             this.cooldownTimerEvent.remove(false);
         }
 
         // Set a timer to end the cooldown
         this.cooldownTimerEvent = this.time.delayedCall(duration, () => {
             this.interactionOnCooldown = false;
-            console.log("Interaction cooldown finished.");
+            console.log("[Phaser Scene] Interaction cooldown finished.");
         }, [], this);
     }
 
    // Methods to control player input enabling/disabling
    disablePlayerInput() {
-       console.log("Disabling Phaser player input (keyboard & joystick).");
+       console.log("[Phaser Scene] Disabling Phaser player input (keyboard & joystick).");
        this.playerInputEnabled = false;
        this.joystickDirection = { x: 0, y: 0 }; // Reset joystick direction state
        // Stop player movement immediately when input is disabled
@@ -495,13 +544,15 @@ export default class MainScene extends Phaser.Scene {
    }
 
    enablePlayerInput() {
-       console.log("Enabling Phaser player input (keyboard & joystick).");
+       console.log("[Phaser Scene] Enabling Phaser player input (keyboard & joystick).");
        this.playerInputEnabled = true;
        // Ensure cursors/WASD are available if they were somehow cleared (shouldn't happen with current logic)
        if (this.input.keyboard && !this.cursors) {
+            console.warn("[Phaser Scene] Recreating cursor keys.");
             this.cursors = this.input.keyboard.createCursorKeys();
        }
        if (this.input.keyboard && !this.wasdKeys) {
+            console.warn("[Phaser Scene] Recreating WASD keys.");
             this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as any;
        }
    }
@@ -509,19 +560,23 @@ export default class MainScene extends Phaser.Scene {
    // Method to receive joystick input data from React component
    joystickInput(data: JoystickOutputData) {
         if (!this.playerInputEnabled) {
-             this.joystickDirection = { x: 0, y: 0 }; // Ensure direction is zeroed if input disabled
+             // Ensure direction is zeroed if input disabled, even if event fires late
+             if(this.joystickDirection.x !== 0 || this.joystickDirection.y !== 0){
+                this.joystickDirection = { x: 0, y: 0 };
+             }
              return;
         }
 
         if (data.direction) {
-            // Use the angle to determine direction
+            // Use the angle to determine direction vector
             const angle = data.angle.radian;
             this.joystickDirection.x = Math.cos(angle);
-            this.joystickDirection.y = Math.sin(angle); // Y is typically inverted in screen coordinates vs math angle
-            // console.log(`Joystick Move: Angle=${data.angle.degree}, Vector=(${this.joystickDirection.x.toFixed(2)}, ${this.joystickDirection.y.toFixed(2)})`);
+            // Y is inverted in screen coordinates vs math angle for Phaser velocity typically
+            this.joystickDirection.y = Math.sin(angle); // Adjust sign if needed based on testing
+            // console.log(`[Joystick Move] Angle=${data.angle.degree}, Vector=(${this.joystickDirection.x.toFixed(2)}, ${this.joystickDirection.y.toFixed(2)})`);
         } else {
             // Joystick released or centered
-             // console.log("Joystick End");
+             // console.log("[Joystick End]");
             this.joystickDirection.x = 0;
             this.joystickDirection.y = 0;
         }
@@ -532,7 +587,10 @@ export default class MainScene extends Phaser.Scene {
         if (!this.nodes) return;
 
         // Clear previous highlight first
-        this.clearNodeHighlight(this.highlightedNodeId);
+        if(this.highlightedNodeId && this.highlightedNodeId !== nodeId) {
+            this.clearNodeHighlight(this.highlightedNodeId);
+        }
+
 
         const nodeToHighlight = this.nodes.getChildren().find(node => {
             const spriteNode = node as Phaser.Physics.Arcade.Sprite;
@@ -540,12 +598,15 @@ export default class MainScene extends Phaser.Scene {
         }) as Phaser.Physics.Arcade.Sprite | undefined;
 
         if (nodeToHighlight) {
-            console.log(`Highlighting node: ${nodeId}`);
-            nodeToHighlight.setTint(0xffaa00); // Example highlight color (orange)
-             nodeToHighlight.setScale(nodeToHighlight.scale * 1.2); // Make it slightly larger
-            this.highlightedNodeId = nodeId;
+             // Only highlight if not already highlighted
+            if (this.highlightedNodeId !== nodeId) {
+                console.log(`[Phaser Scene] Highlighting node: ${nodeId}`);
+                nodeToHighlight.setTint(0xffaa00); // Example highlight color (orange)
+                nodeToHighlight.setScale(nodeToHighlight.scale * 1.2); // Make it slightly larger
+                this.highlightedNodeId = nodeId;
+            }
         } else {
-             console.warn(`Node with ID ${nodeId} not found to highlight.`);
+             console.warn(`[Phaser Scene] Node with ID ${nodeId} not found to highlight.`);
         }
     }
 
@@ -559,9 +620,15 @@ export default class MainScene extends Phaser.Scene {
         }) as Phaser.Physics.Arcade.Sprite | undefined;
 
         if (nodeToClear && nodeToClear.isTinted) {
-            console.log(`Clearing highlight from node: ${nodeId}`);
+            console.log(`[Phaser Scene] Clearing highlight from node: ${nodeId}`);
             nodeToClear.clearTint();
-            nodeToClear.setScale(nodeToClear.scale / 1.2); // Reset scale
+             // Ensure scale is reset correctly - get original scale if possible or divide
+             // Assuming original node scale was stored or known (e.g., nodeScale = 2)
+             const originalScale = 2; // Replace with stored value if available
+             nodeToClear.setScale(originalScale);
+             // Fallback if original scale isn't tracked:
+             // nodeToClear.setScale(nodeToClear.scale / 1.2); // Less reliable
+
             if (this.highlightedNodeId === nodeId) {
                 this.highlightedNodeId = null;
             }
@@ -570,8 +637,13 @@ export default class MainScene extends Phaser.Scene {
 
     // Helper method to get current node count and emit update
     private updateAndEmitNodeCount() {
-        if (!this.nodes || !this.onNodesCountUpdate) return;
-        const count = this.nodes.countActive(true); // Count only active nodes
+        if (!this.nodes || !this.onNodesCountUpdate) {
+             console.warn("[Phaser Scene] Cannot update node count: nodes group or callback missing.");
+            return;
+        }
+        // Count active nodes (nodes that haven't been destroyed)
+        const count = this.nodes.countActive(true);
+        // console.log(`[Phaser Scene] Emitting node count update: ${count}`);
         this.onNodesCountUpdate(count);
     }
 
@@ -593,9 +665,21 @@ export default class MainScene extends Phaser.Scene {
     }
 
     if (!this.player || !(this.player instanceof Phaser.Physics.Arcade.Sprite) || !this.player.body) {
+      // console.warn("[Update] Player object missing or invalid.");
       return;
     }
-    if (!this.cursors && !this.wasdKeys && (this.joystickDirection.x === 0 && this.joystickDirection.y === 0)) return; // Do nothing if no input active
+    if (!this.cursors && !this.wasdKeys && (this.joystickDirection.x === 0 && this.joystickDirection.y === 0)) {
+         // No input sources are active, ensure player stops and idles if needed
+        if (this.player.body.velocity.x !== 0 || this.player.body.velocity.y !== 0) {
+            this.player.setVelocity(0);
+            const currentAnimKey = this.player.anims.currentAnim?.key;
+            if (currentAnimKey && currentAnimKey.startsWith('walk_')) {
+                 const facing = currentAnimKey.split('_')[1] || 'down';
+                this.player.anims.play(`idle_${facing}`, true);
+            }
+        }
+        return; // Do nothing if no input active
+    }
 
     // Reset velocity
     this.player.setVelocity(0);
@@ -606,7 +690,7 @@ export default class MainScene extends Phaser.Scene {
     let facing = currentAnimKey?.replace('walk_', '').replace('idle_', '') || 'down'; // Track direction
 
     // --- Input Handling ---
-    // Keyboard Input (WASD/Arrows) - Takes priority if joystick isn't actively used or if both used
+    // Keyboard Input (WASD/Arrows)
     const leftPressed = this.cursors?.left.isDown || this.wasdKeys?.A.isDown;
     const rightPressed = this.cursors?.right.isDown || this.wasdKeys?.D.isDown;
     const upPressed = this.cursors?.up.isDown || this.wasdKeys?.W.isDown;
@@ -618,28 +702,10 @@ export default class MainScene extends Phaser.Scene {
     if (upPressed) moveY = -1;
     else if (downPressed) moveY = 1;
 
-    // Joystick Input - Use if keyboard isn't pressed OR if you prefer joystick priority
-    // Current logic: Keyboard overrides joystick if keys are down
+    // Joystick Input - Use if keyboard isn't pressed
     if (moveX === 0 && moveY === 0 && (this.joystickDirection.x !== 0 || this.joystickDirection.y !== 0)) {
         moveX = this.joystickDirection.x;
-        // Note: Joystick y is often screen-based (down is positive), adjust if needed
-        // If joystick y gives standard math angle (up positive), use this.joystickDirection.y directly.
-        // If joystick y gives screen angle (down positive), invert it for velocity:
-        moveY = this.joystickDirection.y; // Assuming nipplejs provides standard math angle (y positive up)
-
-         // Determine facing direction primarily from joystick angle
-         const angleDeg = Phaser.Math.RadToDeg(Math.atan2(moveY, moveX));
-         if (angleDeg > -135 && angleDeg <= -45) facing = 'up';
-         else if (angleDeg > 45 && angleDeg <= 135) facing = 'down';
-         else if (angleDeg > 135 || angleDeg <= -135) facing = 'left';
-         else facing = 'right'; // Between -45 and 45
-
-    } else if (moveX !== 0 || moveY !== 0) {
-         // Determine facing from keyboard input
-         if (moveY < 0) facing = 'up';
-         else if (moveY > 0) facing = 'down';
-         else if (moveX < 0) facing = 'left';
-         else if (moveX > 0) facing = 'right';
+        moveY = this.joystickDirection.y; // Assuming standard math angle (Y positive up)
     }
 
 
@@ -649,8 +715,19 @@ export default class MainScene extends Phaser.Scene {
     if (isMoving) {
         const moveVector = new Phaser.Math.Vector2(moveX, moveY).normalize();
         this.player.setVelocity(moveVector.x * this.playerSpeed, moveVector.y * this.playerSpeed);
+
+        // --- Determine Facing Direction ---
+        // Prioritize explicit directions (up/down/left/right)
+        if (Math.abs(moveY) > Math.abs(moveX)) { // Moving more vertically
+            facing = moveY < 0 ? 'up' : 'down';
+        } else if (Math.abs(moveX) > Math.abs(moveY)) { // Moving more horizontally
+            facing = moveX < 0 ? 'left' : 'right';
+        } else { // Moving perfectly diagonally, maintain previous horizontal or default to horizontal based on X
+             facing = moveX < 0 ? 'left' : 'right'; // Or keep previous 'facing' if preferred
+        }
+
     } else {
-        this.player.setVelocity(0); // Explicitly stop if no input
+        this.player.setVelocity(0); // Explicitly stop if no input resulted in movement
     }
 
 
@@ -663,35 +740,36 @@ export default class MainScene extends Phaser.Scene {
     } else {
         // Ensure facing direction from last movement persists in idle state
         const idleAnimKey = `idle_${facing}`;
-         if (currentAnimKey !== idleAnimKey) {
+         if (currentAnimKey !== idleAnimKey && !currentAnimKey?.startsWith('idle_')) {
+             this.player.anims.play(idleAnimKey, true);
+         } else if (!this.player.anims.isPlaying){
+             // If no animation is playing (e.g., after scene load), force idle
              this.player.anims.play(idleAnimKey, true);
          }
     }
-
-    // --- Smooth Camera Resizing (Example - place in resize handler if needed) ---
-    // const scaleManager = this.scale;
-    // scaleManager.on('resize', (gameSize: Phaser.Structs.Size) => {
-    //    // Optional: Adjust camera bounds or zoom based on new size
-    //    this.cameras.main.setBounds(0, 0, this.physics.world.bounds.width, this.physics.world.bounds.height);
-    //    // Maybe adjust zoom based on aspect ratio or size?
-    // });
   }
 
   // Cleanup timer on scene shutdown/destroy
   shutdown() {
+      console.log("[Phaser Scene] Shutdown method called.");
       if (this.cooldownTimerEvent) {
           this.cooldownTimerEvent.remove(false);
       }
        this.joystickDirection = { x: 0, y: 0 }; // Reset joystick state on shutdown
        this.clearNodeHighlight(this.highlightedNodeId); // Clear any active highlight
+       // Remove event listeners? Maybe not needed if scene is destroyed properly.
   }
 
   destroy() {
+       console.log("[Phaser Scene] Destroy method called.");
       if (this.cooldownTimerEvent) {
           this.cooldownTimerEvent.remove(false);
       }
       this.joystickDirection = { x: 0, y: 0 }; // Reset joystick state on destroy
       this.clearNodeHighlight(this.highlightedNodeId); // Clear any active highlight
+      // Clean up other resources if necessary
       super.destroy();
   }
 }
+
+    
