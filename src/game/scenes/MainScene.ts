@@ -16,27 +16,34 @@ export default class MainScene extends Phaser.Scene {
     super({ key: 'MainScene' });
   }
 
-  // Init no longer needs to receive the callback
-  init() {
-    // Initialization logic that doesn't depend on the callback can go here
-    console.log("MainScene initializing...");
-  }
-
   // Add a dedicated method to set the callback after the scene is created
   setInteractionCallback(callback: NodeInteractionCallback) {
     this.onNodeInteract = callback;
     console.log("Interaction callback set in MainScene.");
   }
 
+  preloadAssets(){
+    // Load player_placeholder as spritesheet with 16 horizontally and 8 vertically
+    this.load.spritesheet('player_placeholder', '/assets/images/player_placeholder_32.png', {
+        frameWidth: 32,
+        frameHeight: 32,
+        endFrame: 127, // 16 * 8 = 128 frames, so endFrame is 127 (0-indexed)
+      });
+
+      // Load node_placeholder as spritesheet with 2 horizontally and 1 vertically
+      this.load.spritesheet('node_placeholder', '/assets/images/node_placeholder_16.png', {
+          frameWidth: 16, // Corrected node size
+          frameHeight: 16, // Corrected node size
+          endFrame: 1,
+        });
+  }
 
   preload() {
-    // Load assets from the public directory
-    this.load.image('player', '/assets/images/player_placeholder_32.png');
-    this.load.image('node', '/assets/images/node_placeholder_32.png');
+    this.preloadAssets();
 
      // Log errors if assets still fail to load
      this.load.on('loaderror', (file: Phaser.Loader.File) => {
-         console.error(`Failed to load asset: ${file.key} from ${file.url}`);
+         console.error(`Failed to process file: ${file.key} from ${file.url}`);
      });
      this.load.on('filecomplete', (key: string, type: string, data: any) => {
         console.log(`Asset loaded: ${key}`);
@@ -52,8 +59,8 @@ export default class MainScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#E3F2FD'); // Light blue background
 
     // Ensure player texture exists before creating sprite
-    if (!this.textures.exists('player')) {
-         console.error("Player texture not loaded or available at create time. Check preload path and network issues.");
+    if (!this.textures.exists('player_placeholder')) {
+         console.error("Player texture 'player_placeholder' not loaded or available at create time. Check preload path and network issues.");
           // Optionally add a visual placeholder if texture fails
           const placeholder = this.add.graphics();
           placeholder.fillStyle(0x1A237E, 1); // Dark blue
@@ -61,33 +68,32 @@ export default class MainScene extends Phaser.Scene {
           return; // Stop creation if essential asset is missing
       }
 
-
-    this.player = this.physics.add.sprite(100, 450, 'player');
+    this.player = this.physics.add.sprite(100, 450, 'player_placeholder', 0);
     this.player.setCollideWorldBounds(true);
     // Optional: Resize if needed, though source image should ideally match
-    // this.player.setDisplaySize(32, 32);
+    this.player.setDisplaySize(32, 32);
 
 
     this.cursors = this.input.keyboard?.createCursorKeys();
 
     this.nodes = this.physics.add.staticGroup();
     // Ensure node texture exists
-    if (!this.textures.exists('node')) {
-      console.error("Node texture not loaded or available at create time.");
+    if (!this.textures.exists('node_placeholder')) {
+      console.error("Node texture 'node_placeholder' not loaded or available at create time.");
        // Optionally add a visual placeholder if texture fails
        const placeholder = this.add.graphics();
        placeholder.fillStyle(0xFFEB3B, 1); // Yellow
-       placeholder.fillRect(284, 284, 32, 32);
-       placeholder.fillRect(484, 384, 32, 32);
+       placeholder.fillRect(284, 284, 16, 16); // Use correct size
+       placeholder.fillRect(484, 384, 16, 16); // Use correct size
       return; // Stop creation if essential asset is missing
     }
     // Assign unique IDs to nodes when creating them
-    const node1 = this.nodes.create(300, 300, 'node').setData('nodeId', 'node_quiz1');
-    const node2 = this.nodes.create(500, 400, 'node').setData('nodeId', 'node_quiz2');
-    // Optional: Resize if needed
-    // node1.setDisplaySize(32, 32);
-    // node2.setDisplaySize(32, 32);
+    const node1 = this.nodes.create(300, 300, 'node_placeholder').setData('nodeId', 'node_quiz1');
+    const node2 = this.nodes.create(500, 400, 'node_placeholder').setData('nodeId', 'node_quiz2');
 
+    // Set display size for nodes
+    node1.setDisplaySize(16, 16);
+    node2.setDisplaySize(16, 16);
 
     // Make nodes interactive (optional, for visual feedback)
     node1.setInteractive({ useHandCursor: true }); // Add hand cursor on hover
