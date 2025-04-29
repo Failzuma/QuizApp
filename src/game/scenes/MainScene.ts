@@ -461,6 +461,8 @@ export default class MainScene extends Phaser.Scene {
              console.log(`[Phaser Scene] Node ${nodeId} destroyed. New count: ${this.nodes.countActive(true)}`);
         } else {
             console.warn(`[Phaser Scene] Node ${nodeId} found but was already inactive/destroyed. Skipping removal.`);
+            // Make sure to update count even if node was already inactive, as React relies on this
+            this.updateAndEmitNodeCount();
         }
      } else {
         console.warn(`[Phaser Scene] Node with ID ${nodeId} not found to remove.`);
