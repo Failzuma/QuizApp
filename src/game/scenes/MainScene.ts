@@ -4,11 +4,6 @@ import * as Phaser from 'phaser';
 // Define the types for the interaction callback
 export type NodeInteractionCallback = (nodeId: string) => void;
 
-// Remove SceneInitData interface as we will set the callback after init
-// interface SceneInitData {
-//   onNodeInteract: NodeInteractionCallback;
-// }
-
 export default class MainScene extends Phaser.Scene {
   private player?: Phaser.Physics.Arcade.Sprite;
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -22,7 +17,7 @@ export default class MainScene extends Phaser.Scene {
   }
 
   // Init no longer needs to receive the callback
-  init(/* data: SceneInitData */) {
+  init() {
     // Initialization logic that doesn't depend on the callback can go here
     console.log("MainScene initializing...");
   }
@@ -35,44 +30,42 @@ export default class MainScene extends Phaser.Scene {
 
 
   preload() {
-    // Use placeholder pixel art URLs or local assets if available
-    this.load.image('player', '/assets/images/player_placeholder_32.png'); // Example local asset path
-    this.load.image('node', '/assets/images/node_placeholder_32.png'); // Example local asset path
+    // Load assets from the public directory
+    this.load.image('player', '/assets/images/player_placeholder_32.png');
+    this.load.image('node', '/assets/images/node_placeholder_32.png');
 
-    // Fallback to picsum if local assets fail to load (optional)
-    this.load.on('loaderror', (file: Phaser.Loader.File) => {
-        console.warn(`Failed to load ${file.key}, using picsum fallback.`);
-        if (file.key === 'player') {
-            this.textures.addBase64('player', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAADhlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAAqACAAQAAAABAAAAIKADAAQAAAABAAAAIAAAAACshmLzAAABfklEQVR4Ae2XwWrCQBCGEwUVFB9E/CEfSq9ePRE/Qh+hLxDp1cuLoPdWH0QQvfnRX8hFVVbBQh+bSReu1Ar9g9mbmWTazJyZndkEk8zTTJWZmSHmXb6/fQ66T+NeY94VjvkMHA6HIPAiKyAvDyx/+8sZz/kELiRFAwYmYPEGXIiKAQvjO2C/JZCpAALuEYYMK4B8Q1u+1YACxhv6gY9XgPoh3DkB6B+CkFOC+gE+yDkBoH+E5w0k6B/C8wYS9R/h7SjMbw7wYJ2QkHl3L8G/7vHn/bAlh0wt9T4n9g0gwu13g6g7LALefeCcAs8MYyTDB21cQ4V4C7QLQXbA7gLdYJBzgeXoRzAfwG6G1+A/AP5G0+AUAB6j44FkGkAUfRRT4jVgx4LgLUAXoQAAaAJqN2BVgCbgbgGoAlYGxALE6QD/XmY/AQABMAmgCXASwLSAJuBNgTNAhQBzQKYBLAvIAmAQMBuQJYBVABdAJYBZQJYBfQBqAawCyAvgBNAKwDOAPwD+A9gHkC9gHsA9gf8B9gGkE5gLkAvgGtAugF4AvgIYB5Ae8BTAfwFMA1APwBNAbwC+AEAF3AG8BXAZwFuAdwEOAdwEIAF0AV8BXAU4CeAUUAQgB5QCMAG4BWAFYAlAOIBoAAkAE4BuAWgBQCSAWQCKAUwASAaQCaAGwCWAQwCmAMYC5AG4AqAPQBqAPQBqAPQBmATwCaAVYAlAIAFJAEgCTAJYBpAFIAeUCmARAAkAEABoAEACkAfAAoAfgBwAugEcA0AE4BvAQgBuAWgBqAfgCOAWgB+AbgBaAbgB6AXwA8BjgH0A4wFsAfgANAQwD+AZgGEA/gHQAygOIA/AGQBeAMwCcALADwA4gB8AWgCsAQgB8AWAFgBwAAQAUgBkARgBkAQgAsARAEIAIABMAmAEwA4AEAC4AEACgAAAABAAAACADwAUgPgBwAQgAEACQAEACQAEAAAACAAAgAAAIABAASACAAAgAAIAAACAAABAAgAAACAAAgAAAIABAACAAAgAAAgAAgAAgAAgA4AEYASAC4AMAAkAEYAIAAAAAAAAAAAAAAAAAAAADCn/QAt0f6S+eC8QQAAAABJRU5ErkJggg==');
-        } else if (file.key === 'node') {
-            this.textures.addBase64('node', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAADhlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAAqACAAQAAAABAAAAIKADAAQAAAABAAAAIAAAAACshmLzAAABGUlEQVR4Ae1XPUpDQRR9txjpECgImggICmKFgoKBiIGCgpKCgoKCiIGhoaCh4aooKIgIIgiiQgQxQkSNCBGxCqGL7G7v3bv3hV3I/Q/78+dmZ5JJKiql9BchA1oCb8AvMAHdAfpA7Q9QBHwA/gK/oAr4AXQCXbA40wFfACNgAo6Bu8A1MAHn4A7sAYO9/A4cAdfAaGAR4AEw/J/aXbAFHJcBLyq+AfuAMXAOfAIGgCXAwg0x52wZ6ADeAYeAHnC54j0DBvAM3AOnAA/ApAJ8A9wAl8AS4E3h/B78BFz3q6jN8P4d0F6AAyP88sBZ4Fb1G82BwG9AB9AAfAVUeo4+G1Q+4Q0gBKAAYADAAYADAAYA/AA8AfAE4AngBMAEQAQgAkAEIBMAJABMAGABQASAEgAlACYATAJgBMAFgAsAlAFIAqAKQBqAKQC+A8gL4AqAPQDqAPQCKAfgD0AKgF4AngL0AegF8AXwMcA/AHGA7gG4AuAfgDGA9gE8A/gGUA+gPEA/AGoBeAPQDmACwA8APIB/ALwAaAKwBCAHwC8AKAFAA4AAIANQASAagAkANQBKASQDSAKgAlgFIA5AGYBNAFoAlgFMApgFMAYgHkA7gCoA9AGoA9AGoA5AGIBPADwBqAVQCsAQgEIAkACQBJgNIApAFIApQHMAkgAIAEAAgAaABAAZAHwAaAH4A8AN4BHANABOAbwEIAbgFoAagH4A7AFQG+AbgDaAXQDmA3gF8APAo4B9AOIA7AN4BtAP4BmAeAD+A6QDyAPwBuAbADwA4AHmA/gCsAVACIAfAHgAoAcAAEAFAApAFIAZAEIAJAFQBKACAAgAEwAYAZACAAuABAAQAFAAAAIADAASACAACAAgAIABAASACAAgAAEAgAEAAgAAEAgAAAAgAAEAAgAAAEAAgAAAEAAAgAAIAAAAEAHAALACwAcQAmABwAjACYAEAOwG4AMAAgAAAAAAAAAAAAAAAAAAAP4X/ABUe3z/9lOaNAAAAABJRU5ErkJggg==');
-        }
-        // You might want to force a texture update if needed
-        // this.textures.refresh();
-    });
+     // Log errors if assets still fail to load
+     this.load.on('loaderror', (file: Phaser.Loader.File) => {
+         console.error(`Failed to load asset: ${file.key} from ${file.url}`);
+     });
+     this.load.on('filecomplete', (key: string, type: string, data: any) => {
+        console.log(`Asset loaded: ${key}`);
+     });
+     this.load.on('complete', () => {
+        console.log("Asset loading complete.");
+     });
 
   }
 
   create() {
+    console.log("MainScene create method started.");
     this.cameras.main.setBackgroundColor('#E3F2FD'); // Light blue background
 
     // Ensure player texture exists before creating sprite
     if (!this.textures.exists('player')) {
-         console.error("Player texture not loaded, cannot create sprite.");
-         // Create a placeholder graphic if texture failed
+         console.error("Player texture not loaded or available at create time. Check preload path and network issues.");
+          // Optionally add a visual placeholder if texture fails
           const placeholder = this.add.graphics();
           placeholder.fillStyle(0x1A237E, 1); // Dark blue
-          placeholder.fillRect(92, 442, 16, 16); // Positioned approx center if 32x32
-          this.player = placeholder as any; // Assign but this won't have physics
-          // OR return/throw error
-          return;
+          placeholder.fillRect(92, 442, 32, 32); // Positioned approx center
+          return; // Stop creation if essential asset is missing
       }
 
 
     this.player = this.physics.add.sprite(100, 450, 'player');
     this.player.setCollideWorldBounds(true);
-    // Tint can be removed if using actual pixel art asset
-    // this.player.setTint(0x1A237E);
+    // Optional: Resize if needed, though source image should ideally match
+    // this.player.setDisplaySize(32, 32);
 
 
     this.cursors = this.input.keyboard?.createCursorKeys();
@@ -80,23 +73,29 @@ export default class MainScene extends Phaser.Scene {
     this.nodes = this.physics.add.staticGroup();
     // Ensure node texture exists
     if (!this.textures.exists('node')) {
-      console.error("Node texture not loaded, cannot create nodes.");
-      return; // Or handle gracefully
+      console.error("Node texture not loaded or available at create time.");
+       // Optionally add a visual placeholder if texture fails
+       const placeholder = this.add.graphics();
+       placeholder.fillStyle(0xFFEB3B, 1); // Yellow
+       placeholder.fillRect(284, 284, 32, 32);
+       placeholder.fillRect(484, 384, 32, 32);
+      return; // Stop creation if essential asset is missing
     }
     // Assign unique IDs to nodes when creating them
     const node1 = this.nodes.create(300, 300, 'node').setData('nodeId', 'node_quiz1');
     const node2 = this.nodes.create(500, 400, 'node').setData('nodeId', 'node_quiz2');
-    // Tint can be removed if using actual pixel art asset
-    // node1.setTint(0xFFEB3B); // Yellow accent
-    // node2.setTint(0xFFEB3B);
+    // Optional: Resize if needed
+    // node1.setDisplaySize(32, 32);
+    // node2.setDisplaySize(32, 32);
+
 
     // Make nodes interactive (optional, for visual feedback)
-    node1.setInteractive();
-    node2.setInteractive();
-    node1.on('pointerover', () => node1.setAlpha(0.8));
-    node1.on('pointerout', () => node1.setAlpha(1));
-    node2.on('pointerover', () => node2.setAlpha(0.8));
-    node2.on('pointerout', () => node2.setAlpha(1));
+    node1.setInteractive({ useHandCursor: true }); // Add hand cursor on hover
+    node2.setInteractive({ useHandCursor: true });
+    node1.on('pointerover', () => { if(!this.disabledNodes.has('node_quiz1')) node1.setAlpha(0.7); });
+    node1.on('pointerout', () => { if(!this.disabledNodes.has('node_quiz1')) node1.setAlpha(1); });
+    node2.on('pointerover', () => { if(!this.disabledNodes.has('node_quiz2')) node2.setAlpha(0.7); });
+    node2.on('pointerout', () => { if(!this.disabledNodes.has('node_quiz2')) node2.setAlpha(1); });
 
 
     // Refresh body is needed for static sprites after creation/modification
@@ -109,7 +108,8 @@ export default class MainScene extends Phaser.Scene {
     this.add.text(16, 16, 'Use arrow keys to move. Touch an interactive square.', {
       fontSize: '16px',
       color: '#1A237E', // Dark blue text
-      fontFamily: '"Press Start 2P", monospace' // Example pixel font
+      // Consider adding a web font loader if using custom fonts
+      // fontFamily: '"Press Start 2P", monospace'
      });
 
      // Check if the callback was set correctly (by React's postBoot)
@@ -117,6 +117,7 @@ export default class MainScene extends Phaser.Scene {
         // This might log initially until postBoot runs, which is fine
         console.warn("onNodeInteract callback is not yet set in create(). Expected to be set via postBoot.");
      }
+     console.log("MainScene create method finished.");
   }
 
    handleNodeOverlap(player: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile,
@@ -177,14 +178,17 @@ export default class MainScene extends Phaser.Scene {
     }
 
     const speed = 160;
+    // Reset velocity each frame
     this.player.setVelocity(0);
 
+    // Horizontal movement
     if (this.cursors.left.isDown) {
       this.player.setVelocityX(-speed);
     } else if (this.cursors.right.isDown) {
       this.player.setVelocityX(speed);
     }
 
+    // Vertical movement
     if (this.cursors.up.isDown) {
       this.player.setVelocityY(-speed);
     } else if (this.cursors.down.isDown) {
@@ -194,9 +198,10 @@ export default class MainScene extends Phaser.Scene {
      // Normalize and scale the velocity so that player doesn't move faster diagonally
      const velocity = this.player.body?.velocity;
      if (velocity && (velocity.x !== 0 || velocity.y !== 0)) {
-         const magnitude = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
-         if (magnitude > speed) {
-            this.player.setVelocity(velocity.x * speed / magnitude, velocity.y * speed / magnitude);
+         const currentSpeed = velocity.length(); // Use vector length
+         if (currentSpeed > speed) {
+            // Scale velocity vector to the desired speed
+             velocity.normalize().scale(speed);
          }
      }
   }
