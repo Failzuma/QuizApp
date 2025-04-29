@@ -5,12 +5,13 @@ import React, { useEffect, useRef, useState, use } from 'react';
 // Phaser is dynamically imported within useEffect
 // import * as Phaser from 'phaser';
 import { Header } from '@/components/Header';
-import { Footer } from '@/components/Footer';
+// Footer removed to maximize game area
+// import { Footer } from '@/components/Footer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { X } from 'lucide-react';
+import { X, Trophy } from 'lucide-react'; // Added Trophy icon for HUD
 import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
 import type { NodeInteractionCallback } from '@/game/scenes/MainScene'; // Import the type only
 import { useToast } from "@/hooks/use-toast"; // Import useToast
@@ -99,9 +100,9 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             const config: Phaser.Types.Core.GameConfig = {
               type: Phaser.AUTO,
               parent: gameContainerRef.current,
-              // Set a base size, camera zoom will handle scaling
-              width: 800,
-              height: 600,
+              // Use percentages or viewport units for parent container driven size
+              width: '100%',
+              height: '100%',
               physics: {
                 default: 'arcade',
                 arcade: {
@@ -214,109 +215,119 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
       // If quiz is closed without answering, we don't remove the node
       // unless we explicitly want that behavior. Currently, it remains.
       console.log("Quiz closed without answering.");
+      // We still need to re-enable the node body if closed without answering
+       if (currentQuizNodeId && sceneInstanceRef.current && typeof sceneInstanceRef.current.reEnableNode === 'function') {
+          sceneInstanceRef.current.reEnableNode(currentQuizNodeId);
+       } else {
+          console.warn("Could not re-enable node on quiz close.");
+       }
       setCurrentQuiz(null);
       setCurrentQuizNodeId(null);
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
+    // Make the main container flex column and take full screen height minus header (approx)
+    <div className="flex flex-col h-screen overflow-hidden">
       <Header />
-      <main className="flex-grow container mx-auto px-4 py-8">
-        {/* Check if resolvedParams exists before accessing properties */}
-        <h1 className="text-2xl font-bold mb-2 text-primary">Map: {resolvedParams ? decodeURIComponent(resolvedParams.mapId) : 'Loading...'}</h1>
-        <p className="text-muted-foreground mb-6">Room Code: <span className="font-mono bg-muted px-2 py-1 rounded">XYZ123</span> (Placeholder)</p>
+      {/* Removed container/padding from main to allow game to fill space */}
+      <main className="flex-grow relative"> {/* Added relative positioning */}
+        {/* Game Area - Now takes up the majority of the space */}
+        <div
+          ref={gameContainerRef}
+          id="phaser-game-container"
+          // Use absolute positioning or flex-grow to fill the main area
+          className="absolute inset-0 bg-muted border border-muted-foreground overflow-hidden" // Fill parent 'main'
+        >
+          {/* Phaser canvas will be injected here */}
+        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 relative">
-          {/* Game Area */}
-          <div className="lg:col-span-3">
-             <div
-                ref={gameContainerRef}
-                id="phaser-game-container"
-                // Use aspect-ratio to maintain shape, height is less critical with camera follow
-                className="w-full aspect-video bg-muted border border-muted-foreground overflow-hidden rounded-lg shadow-md"
-             >
-                 {/* Phaser canvas will be injected here */}
-             </div>
-          </div>
+        {/* Map Title and Room Code Overlay */}
+        <div className="absolute top-4 left-4 z-10 bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
+           <h1 className="text-lg font-bold text-primary">Map: {resolvedParams ? decodeURIComponent(resolvedParams.mapId) : 'Loading...'}</h1>
+           <p className="text-xs text-muted-foreground">Room Code: <span className="font-mono bg-muted px-1 py-0.5 rounded">XYZ123</span></p>
+        </div>
 
-          {/* Sidebar - Leaderboard */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle>Session Leaderboard</CardTitle>
-              </CardHeader>
-              <CardContent>
-                 {/* Adjust height based on typical game container height */}
-                <ScrollArea className="h-[450px] md:h-[550px] pr-4">
-                  <ul className="space-y-4">
+
+        {/* Sidebar - Leaderboard as HUD Overlay */}
+        <div className="absolute top-4 right-4 z-10 w-64"> {/* Adjust width as needed */}
+            <Card className="bg-background/70 backdrop-blur-sm shadow-lg border-primary/50"> {/* Semi-transparent HUD */}
+            <CardHeader className="p-3"> {/* Reduced padding */}
+                <CardTitle className="text-base flex items-center gap-2"> {/* Smaller title */}
+                   <Trophy className="h-4 w-4 text-primary" /> Leaderboard
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0"> {/* Remove padding to let ScrollArea handle it */}
+                {/* Adjust height - make it dynamic or fixed height */}
+                <ScrollArea className="h-60 px-3 pb-3"> {/* Fixed height example, adjust as needed */}
+                <ul className="space-y-2">
                     {players.map((player, index) => (
-                      <li key={player.id} className="flex items-center justify-between p-2 rounded hover:bg-secondary transition-colors"> {/* Added hover effect */}
-                        <div className="flex items-center gap-3">
-                          <span className="font-semibold w-6 text-center text-muted-foreground">{index + 1}</span>
-                          <Avatar className="h-8 w-8">
+                    <li key={player.id} className="flex items-center justify-between p-1.5 rounded text-xs hover:bg-secondary/80 transition-colors"> {/* Smaller text, padding */}
+                        <div className="flex items-center gap-2">
+                        <span className="font-semibold w-5 text-center text-muted-foreground">{index + 1}</span>
+                        <Avatar className="h-6 w-6"> {/* Smaller avatar */}
                             <AvatarImage src={player.avatar} alt={player.name} />
                             <AvatarFallback>{player.name.substring(0, 1)}</AvatarFallback>
-                          </Avatar>
-                          <span className={`flex-1 truncate ${player.name === 'You' ? 'font-bold text-primary' : ''}`}>{player.name}</span> {/* Highlight 'You' */}
+                        </Avatar>
+                        <span className={`flex-1 truncate ${player.name === 'You' ? 'font-bold text-primary' : ''}`}>{player.name}</span>
                         </div>
                         <span className="font-semibold text-primary">{player.score} pts</span>
-                      </li>
+                    </li>
                     ))}
-                  </ul>
+                </ul>
                 </ScrollArea>
-              </CardContent>
+            </CardContent>
             </Card>
-          </div>
-
-           {/* Quiz Modal/Overlay */}
-           {showQuiz && currentQuiz && (
-                <div className="absolute inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-10 p-4"> {/* Increased blur */}
-                    <Card className="w-full max-w-lg shadow-xl border-primary border-2"> {/* Added primary border */}
-                         <CardHeader>
-                            <div className="flex justify-between items-center">
-                               <CardTitle className="text-primary">Quiz Time!</CardTitle> {/* Styled title */}
-                               <Button variant="ghost" size="icon" onClick={closeQuiz}>
-                                   <X className="h-5 w-5 text-muted-foreground hover:text-foreground" /> {/* Styled close button */}
-                               </Button>
-                           </div>
-
-                        </CardHeader>
-                        <CardContent>
-                           <p className="mb-6 text-lg font-medium">{currentQuiz.question}</p> {/* Increased margin */}
-                            {currentQuiz.type === 'multiple-choice' && (
-                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                   {currentQuiz.options.map((option, index) => (
-                                       <Button
-                                           key={index}
-                                           variant="outline"
-                                           className="justify-start text-left h-auto py-3 hover:bg-accent hover:text-accent-foreground transition-colors duration-200" // Added hover effect
-                                           onClick={() => handleAnswerSubmit(option)}
-                                        >
-                                           {option}
-                                       </Button>
-                                   ))}
-                               </div>
-                           )}
-                            {currentQuiz.type === 'short-answer' && (
-                                <div>
-                                    {/* Consider using react-hook-form for better state management */}
-                                    <input id="short-answer-input" type="text" placeholder="Type your answer..." className="w-full p-2 border rounded mb-3 focus:ring-primary focus:border-primary" /> {/* Added focus style */}
-                                    <Button onClick={() => {
-                                        const inputElement = document.getElementById('short-answer-input') as HTMLInputElement;
-                                        handleAnswerSubmit(inputElement?.value || '');
-                                    }}
-                                    className="w-full" // Make submit button full width
-                                    >Submit</Button>
-                                </div>
-                            )}
-                           {/* TODO: Add rendering for other quiz types */}
-                        </CardContent>
-                    </Card>
-                </div>
-            )}
         </div>
+
+        {/* Quiz Modal/Overlay */}
+        {showQuiz && currentQuiz && (
+            <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-20 p-4"> {/* Increased z-index */}
+                <Card className="w-full max-w-lg shadow-xl border-primary border-2"> {/* Added primary border */}
+                    <CardHeader>
+                        <div className="flex justify-between items-center">
+                        <CardTitle className="text-primary">Quiz Time!</CardTitle> {/* Styled title */}
+                        <Button variant="ghost" size="icon" onClick={closeQuiz}>
+                            <X className="h-5 w-5 text-muted-foreground hover:text-foreground" /> {/* Styled close button */}
+                        </Button>
+                    </div>
+
+                    </CardHeader>
+                    <CardContent>
+                    <p className="mb-6 text-lg font-medium">{currentQuiz.question}</p> {/* Increased margin */}
+                        {currentQuiz.type === 'multiple-choice' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {currentQuiz.options.map((option, index) => (
+                                <Button
+                                    key={index}
+                                    variant="outline"
+                                    className="justify-start text-left h-auto py-3 hover:bg-accent hover:text-accent-foreground transition-colors duration-200" // Added hover effect
+                                    onClick={() => handleAnswerSubmit(option)}
+                                    >
+                                    {option}
+                                </Button>
+                            ))}
+                        </div>
+                    )}
+                        {currentQuiz.type === 'short-answer' && (
+                            <div>
+                                {/* Consider using react-hook-form for better state management */}
+                                <input id="short-answer-input" type="text" placeholder="Type your answer..." className="w-full p-2 border rounded mb-3 focus:ring-primary focus:border-primary" /> {/* Added focus style */}
+                                <Button onClick={() => {
+                                    const inputElement = document.getElementById('short-answer-input') as HTMLInputElement;
+                                    handleAnswerSubmit(inputElement?.value || '');
+                                }}
+                                className="w-full" // Make submit button full width
+                                >Submit</Button>
+                            </div>
+                        )}
+                    {/* TODO: Add rendering for other quiz types */}
+                    </CardContent>
+                </Card>
+            </div>
+        )}
       </main>
-      <Footer />
+      {/* Footer removed to maximize game area */}
+      {/* <Footer /> */}
     </div>
   );
 }

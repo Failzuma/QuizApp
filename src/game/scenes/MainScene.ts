@@ -14,7 +14,6 @@ export default class MainScene extends Phaser.Scene {
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private nodes?: Phaser.Physics.Arcade.StaticGroup;
   private onNodeInteract!: NodeInteractionCallback; // Should be set in initScene
-  // private disabledNodes: Set<string> = new Set(); // Keep track of disabled nodes -> No longer needed, nodes are removed
   private mapId?: string;
   private currentBackground?: Phaser.GameObjects.Image;
   private playerSpeed = 200; // Player movement speed
@@ -42,15 +41,6 @@ export default class MainScene extends Phaser.Scene {
     }
   }
 
-
-  // // Separate method for setting callback (used by React postBoot)
-  // // Deprecated in favor of initScene, but kept for potential fallback
-  // setInteractionCallback(callback: NodeInteractionCallback) {
-  //   if (!this.onNodeInteract) { // Only set if not already set by initScene
-  //       this.onNodeInteract = callback;
-  //       console.warn("Interaction callback set via legacy setInteractionCallback.");
-  //   }
-  // }
 
   preloadAssets() {
     // Preload assets common to all maps
@@ -322,9 +312,14 @@ export default class MainScene extends Phaser.Scene {
    handleNodeOverlap(player: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile,
                      node: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile)
    {
-     // Type guard to ensure node is a sprite with data
-     if (!(node instanceof Phaser.Physics.Arcade.Sprite)) {
+     // Type guard to ensure node is a sprite with data and body
+     if (!(node instanceof Phaser.Physics.Arcade.Sprite) || !node.body) {
        return;
+     }
+
+     // Check if the node's body is already disabled (prevent rapid re-triggering)
+     if (!node.body.enable) {
+         return;
      }
 
      const spriteNode = node as Phaser.Physics.Arcade.Sprite;
@@ -360,10 +355,26 @@ export default class MainScene extends Phaser.Scene {
      if (nodeToRemove) {
        console.log(`Removing node: ${nodeId}`);
        nodeToRemove.destroy(); // Remove the node from the scene and the group
-       // No need to manage a disabled set anymore
      } else {
         console.warn(`Node with ID ${nodeId} not found to remove.`);
      }
+   }
+
+   // Method called from React to re-enable a node if quiz is closed without answering
+   reEnableNode(nodeId: string) {
+       if (!this.nodes) return;
+
+       const nodeToReEnable = this.nodes.getChildren().find(node => {
+           const spriteNode = node as Phaser.Physics.Arcade.Sprite;
+           return spriteNode.getData('nodeId') === nodeId;
+       }) as Phaser.Physics.Arcade.Sprite | undefined;
+
+       if (nodeToReEnable) {
+           console.log(`Re-enabling node: ${nodeId}`);
+           nodeToReEnable.enableBody(false, 0, 0, true, true); // Re-enable physics body
+       } else {
+           console.warn(`Node with ID ${nodeId} not found to re-enable.`);
+       }
    }
 
 
