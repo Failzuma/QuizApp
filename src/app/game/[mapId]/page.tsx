@@ -66,8 +66,9 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         setShowQuiz(true);
         setShortAnswerValue(''); // Clear previous short answer
 
-        // Disable Phaser keyboard input when quiz opens, especially for short answer
-        sceneInstanceRef.current?.disableKeyboardInput(); // Always disable input when quiz opens
+        // --- CRITICAL: Disable Phaser keyboard input when quiz opens ---
+        sceneInstanceRef.current?.disableKeyboardInput();
+
         // Focus the input field shortly after the modal appears for short answers
         if (quizData.type === 'short-answer') {
              setTimeout(() => shortAnswerInputRef.current?.focus(), 100);
@@ -76,7 +77,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         console.warn(`No quiz found for nodeId: ${nodeId}`);
         // If no quiz, immediately signal Phaser to remove the non-interactive node
         removeNode(nodeId);
-        // Ensure input is enabled if no quiz is shown
+        // --- Ensure input is enabled if no quiz is shown ---
         sceneInstanceRef.current?.enableKeyboardInput();
     }
   };
@@ -204,12 +205,16 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         // Allow spacebar
         if (event.key === ' ') {
             // Default behavior is fine, no preventDefault needed usually
-            // event.stopPropagation(); // Stop propagation if Phaser is capturing space too aggressively
+             event.stopPropagation(); // Ensure space doesn't bubble up to Phaser if needed
         }
         // Submit on Enter
         if (event.key === 'Enter') {
             event.preventDefault(); // Prevent form submission if it's in a form
             submitShortAnswer();
+        }
+        // Prevent WASD from propagating to Phaser while typing
+        if (['w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+             event.stopPropagation();
         }
     };
 

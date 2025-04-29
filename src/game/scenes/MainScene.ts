@@ -433,15 +433,24 @@ export default class MainScene extends Phaser.Scene {
    disableKeyboardInput() {
        console.log("Disabling Phaser keyboard input.");
        this.keyboardInputEnabled = false;
-       // We are using event.stopPropagation() in the key listeners now,
-       // so removing/re-adding keys is less critical, but might still be needed
-       // depending on specific browser/OS behavior.
+       // Stop player movement immediately when input is disabled
+       if (this.player && this.player.body) {
+         this.player.setVelocity(0);
+         // Set to idle animation based on current or last direction
+         const currentAnimKey = this.player.anims.currentAnim?.key;
+         if (currentAnimKey && (currentAnimKey.startsWith('walk_') || currentAnimKey.startsWith('idle_'))) {
+             const facing = currentAnimKey.split('_')[1];
+             this.player.anims.play(`idle_${facing}`, true);
+         } else {
+             this.player.anims.play('idle_down', true); // Default idle
+         }
+       }
    }
 
    enableKeyboardInput() {
        console.log("Enabling Phaser keyboard input.");
        this.keyboardInputEnabled = true;
-       // Ensure cursors/WASD are available if they were somehow cleared
+       // Ensure cursors/WASD are available if they were somehow cleared (shouldn't happen with current logic)
        if (this.input.keyboard && !this.cursors) {
             this.cursors = this.input.keyboard.createCursorKeys();
        }
@@ -454,16 +463,7 @@ export default class MainScene extends Phaser.Scene {
   update(time: number, delta: number) {
     // Only process player movement if keyboard input is enabled
     if (!this.keyboardInputEnabled) {
-         // Ensure player stops moving when input is disabled
-         if (this.player && this.player.body) {
-             this.player.setVelocity(0);
-             // Optional: Set to idle animation based on last facing direction
-             const currentAnimKey = this.player.anims.currentAnim?.key;
-             if (currentAnimKey && currentAnimKey.startsWith('walk_')) {
-                 const facing = currentAnimKey.split('_')[1];
-                 this.player.anims.play(`idle_${facing}`, true);
-             }
-         }
+         // No need to stop player here, disableKeyboardInput() already handles it
          return;
     }
 
