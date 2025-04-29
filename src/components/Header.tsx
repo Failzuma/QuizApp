@@ -23,61 +23,63 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-14 max-w-screen-2xl items-center">
-        <div className="mr-4 hidden md:flex">
+        {/* Logo and Desktop Nav (if any) */}
+        <div className="flex items-center flex-1">
           <Link href="/" className="mr-6 flex items-center space-x-2">
             <PixelMapIcon />
             <span className="hidden font-bold sm:inline-block">
               QuizApp
             </span>
           </Link>
-          <nav className="flex items-center gap-6 text-sm">
-            {/* Desktop nav items can go here if needed beyond user actions */}
-          </nav>
+          {/* Desktop nav items can go here if needed beyond user actions */}
+           <nav className="hidden md:flex items-center gap-6 text-sm">
+             {/* Example: <Link href="/about">About</Link> */}
+           </nav>
         </div>
-        <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
-          {/* Mobile Menu */}
-          <div className="md:hidden">
-             <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon">
-                    <Menu className="h-5 w-5" />
-                    <span className="sr-only">Toggle Menu</span>
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="pr-0">
-                   <Link
-                    href="/"
-                    className="flex items-center space-x-2 mb-4"
-                  >
-                    <PixelMapIcon />
-                    <span className="font-bold">QuizApp</span>
-                  </Link>
-                  <nav className="flex flex-col gap-4">
-                    {navItems.map((item) => (
-                       <Link
-                        key={item.href}
-                        href={item.href}
-                        className="text-foreground hover:text-primary transition-colors"
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
-                  </nav>
-                </SheetContent>
-              </Sheet>
-          </div>
 
-          {/* Desktop User Actions */}
-          <nav className="hidden md:flex items-center gap-2">
-             <Button variant="ghost" asChild>
-                <Link href="/login">Login</Link>
-              </Button>
-             <Button asChild>
-                <Link href="/register">Register</Link>
-             </Button>
-             {/* Conditional Profile/Logout buttons will go here */}
-          </nav>
+        {/* Mobile Menu Trigger */}
+        <div className="md:hidden">
+           <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Toggle Menu</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="pr-0 w-[250px]"> {/* Adjust width as needed */}
+                 <Link
+                  href="/"
+                  className="flex items-center space-x-2 mb-6 pl-6 pt-4" // Added padding
+                >
+                  <PixelMapIcon />
+                  <span className="font-bold">QuizApp</span>
+                </Link>
+                <nav className="flex flex-col gap-3 px-6"> {/* Adjusted gap and padding */}
+                  {navItems.map((item) => (
+                     <Link
+                      key={item.href}
+                      href={item.href}
+                      className="text-foreground hover:text-primary transition-colors py-1" // Added padding
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </nav>
+              </SheetContent>
+            </Sheet>
         </div>
+
+        {/* Desktop User Actions (Login/Register) */}
+        <div className="hidden md:flex items-center gap-2">
+            <Button variant="ghost" asChild>
+              <Link href="/login">Login</Link>
+            </Button>
+           <Button asChild>
+              <Link href="/register">Register</Link>
+           </Button>
+           {/* Conditional Profile/Logout buttons will go here */}
+        </div>
+
       </div>
     </header>
   );
