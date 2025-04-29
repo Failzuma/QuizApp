@@ -24,6 +24,9 @@ export default class MainScene extends Phaser.Scene {
   private zoomIncrement = 0.1; // How much to zoom per step
   private playerScale = 1.5; // Make player larger
   private keyboardInputEnabled = true; // Flag to control player movement input
+  private interactionOnCooldown = false; // Flag to manage node interaction cooldown
+  private cooldownTimerEvent?: Phaser.Time.TimerEvent; // Timer event for cooldown
+
 
   constructor() {
     super({ key: 'MainScene' });
@@ -289,14 +292,22 @@ export default class MainScene extends Phaser.Scene {
         this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key; };
 
         // Stop propagation for keys used by player movement IF THEY CONFLICT with UI
-        // Only do this if absolutely necessary and test thoroughly.
-        // Example: Stop spacebar propagation if it causes issues while typing
-        // this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE).on('down', (event: KeyboardEvent) => {
-        //      if (!this.keyboardInputEnabled) { // Only interfere when UI is active
-        //          event.stopPropagation();
-        //      }
-        // });
-        // Do the same for W, A, S, D if needed.
+        // Example: Stop spacebar propagation ONLY when keyboard input is disabled (quiz active)
+        this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE).on('down', (event: KeyboardEvent) => {
+             if (!this.keyboardInputEnabled) { // Only interfere when UI is active
+                 event.stopPropagation();
+             }
+        });
+        // Consider doing the same for W, A, S, D if needed, but test carefully
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
+         // Add for Arrow Keys as well if they cause issues
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
     }
 
 
@@ -333,6 +344,12 @@ export default class MainScene extends Phaser.Scene {
      // Type guard to ensure node is a sprite with data and body
      if (!(node instanceof Phaser.Physics.Arcade.Sprite) || !node.body) {
        return;
+     }
+
+     // Check if interaction is currently on cooldown
+     if (this.interactionOnCooldown) {
+         console.log("Interaction on cooldown, ignoring overlap.");
+         return;
      }
 
      // Check if the node's body is already disabled (prevent rapid re-triggering)
@@ -395,30 +412,42 @@ export default class MainScene extends Phaser.Scene {
        }
    }
 
+   // Method called from React to start the interaction cooldown
+   startInteractionCooldown(duration: number) {
+        this.interactionOnCooldown = true;
+        console.log(`Interaction cooldown started for ${duration}ms.`);
+
+        // Clear any existing cooldown timer
+        if (this.cooldownTimerEvent) {
+            this.cooldownTimerEvent.remove(false);
+        }
+
+        // Set a timer to end the cooldown
+        this.cooldownTimerEvent = this.time.delayedCall(duration, () => {
+            this.interactionOnCooldown = false;
+            console.log("Interaction cooldown finished.");
+        }, [], this);
+    }
+
    // Methods to control keyboard input enabling/disabling
    disableKeyboardInput() {
        console.log("Disabling Phaser keyboard input.");
        this.keyboardInputEnabled = false;
-       // Optionally stop specific keys if they were captured
-       // if (this.input.keyboard) {
-       //     this.input.keyboard.removeKey(Phaser.Input.Keyboard.KeyCodes.W);
-       //     this.input.keyboard.removeKey(Phaser.Input.Keyboard.KeyCodes.A);
-       //     // etc. for S, D, SPACE, ARROWS if captured
-       // }
+       // We are using event.stopPropagation() in the key listeners now,
+       // so removing/re-adding keys is less critical, but might still be needed
+       // depending on specific browser/OS behavior.
    }
 
    enableKeyboardInput() {
        console.log("Enabling Phaser keyboard input.");
        this.keyboardInputEnabled = true;
-       // Re-add keys if they were removed (ensure WASD keys object exists)
-       // if (this.input.keyboard && !this.wasdKeys) {
-       //     this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as any;
-       // }
-       // if (this.input.keyboard && !this.cursors) {
-       //      this.cursors = this.input.keyboard.createCursorKeys();
-       // }
-       // Re-add captured keys if needed
-       // this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE).on('down', ...);
+       // Ensure cursors/WASD are available if they were somehow cleared
+       if (this.input.keyboard && !this.cursors) {
+            this.cursors = this.input.keyboard.createCursorKeys();
+       }
+       if (this.input.keyboard && !this.wasdKeys) {
+            this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as any;
+       }
    }
 
 
@@ -506,5 +535,19 @@ export default class MainScene extends Phaser.Scene {
     //    this.cameras.main.setBounds(0, 0, this.physics.world.bounds.width, this.physics.world.bounds.height);
     //    // Maybe adjust zoom based on aspect ratio or size?
     // });
+  }
+
+  // Cleanup timer on scene shutdown/destroy
+  shutdown() {
+      if (this.cooldownTimerEvent) {
+          this.cooldownTimerEvent.remove(false);
+      }
+  }
+
+  destroy() {
+      if (this.cooldownTimerEvent) {
+          this.cooldownTimerEvent.remove(false);
+      }
+      super.destroy();
   }
 }

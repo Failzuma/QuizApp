@@ -67,9 +67,9 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         setShortAnswerValue(''); // Clear previous short answer
 
         // Disable Phaser keyboard input when quiz opens, especially for short answer
+        sceneInstanceRef.current?.disableKeyboardInput(); // Always disable input when quiz opens
+        // Focus the input field shortly after the modal appears for short answers
         if (quizData.type === 'short-answer') {
-             sceneInstanceRef.current?.disableKeyboardInput();
-             // Focus the input field shortly after the modal appears
              setTimeout(() => shortAnswerInputRef.current?.focus(), 100);
         }
     } else {
@@ -252,15 +252,31 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
   const closeQuiz = () => {
       setShowQuiz(false);
-      // If quiz is closed without answering, we don't remove the node
-      // unless we explicitly want that behavior. Currently, it remains.
+      // If quiz is closed without answering, we need to re-enable the node
+      // and start the interaction cooldown.
       console.log("Quiz closed without answering.");
-      // We still need to re-enable the node body if closed without answering
-       if (currentQuizNodeId && sceneInstanceRef.current && typeof sceneInstanceRef.current.reEnableNode === 'function') {
-          sceneInstanceRef.current.reEnableNode(currentQuizNodeId);
-       } else {
-          console.warn("Could not re-enable node on quiz close.");
-       }
+
+      if (currentQuizNodeId && sceneInstanceRef.current) {
+         // Re-enable the node's physics body
+         if (typeof sceneInstanceRef.current.reEnableNode === 'function') {
+            sceneInstanceRef.current.reEnableNode(currentQuizNodeId);
+         } else {
+            console.warn("Could not re-enable node on quiz close.");
+         }
+
+         // Start the interaction cooldown in Phaser
+         if (typeof sceneInstanceRef.current.startInteractionCooldown === 'function') {
+             const cooldownDuration = 1500; // 1.5 seconds cooldown
+             console.log(`Starting node interaction cooldown for ${cooldownDuration}ms`);
+             sceneInstanceRef.current.startInteractionCooldown(cooldownDuration);
+         } else {
+              console.warn("Could not start interaction cooldown.");
+         }
+
+      } else {
+          console.warn("Could not find node ID to re-enable/apply cooldown.");
+      }
+
 
         // --- CRITICAL: Re-enable Phaser keyboard input ---
        sceneInstanceRef.current?.enableKeyboardInput();
