@@ -27,7 +27,7 @@ export default class MainScene extends Phaser.Scene {
   private minZoom = 0.5; // Minimum zoom level
   private maxZoom = 3; // Maximum zoom level
   private zoomIncrement = 0.1; // How much to zoom per step
-  private playerScale = 1.5; // Make player larger
+  private playerScale = 2.0; // Make player larger <<-- INCREASED SCALE
   private playerInputEnabled = true; // Flag to control player movement input
   private interactionOnCooldown = false; // Flag to manage node interaction cooldown
   private cooldownTimerEvent?: Phaser.Time.TimerEvent; // Timer event for cooldown
@@ -219,7 +219,15 @@ export default class MainScene extends Phaser.Scene {
         const bgHeight = this.currentBackground.height;
         this.physics.world.setBounds(0, 0, bgWidth, bgHeight);
         this.cameras.main.setBounds(0, 0, bgWidth, bgHeight);
-        console.log(`Set background ${backgroundAssetKey} and world bounds: ${bgWidth}x${bgHeight}`);
+
+        // Calculate minZoom based on background size and game canvas size
+        // Prevent zooming out further than the background boundaries
+        const gameWidth = this.scale.width;
+        const gameHeight = this.scale.height;
+        this.minZoom = Math.max(gameWidth / bgWidth, gameHeight / bgHeight, 0.1); // Ensure minZoom is at least 0.1
+        this.minZoom = Phaser.Math.Clamp(this.minZoom, 0.1, 1); // Clamp between 0.1 and 1
+
+        console.log(`Set background ${backgroundAssetKey} and world bounds: ${bgWidth}x${bgHeight}. Min zoom calculated: ${this.minZoom}`);
     } else {
         // This block should ideally not be reached if the logic above is correct,
         // but serves as a final fallback.
@@ -228,6 +236,7 @@ export default class MainScene extends Phaser.Scene {
         const defaultWidth = 1600; const defaultHeight = 1200;
         this.physics.world.setBounds(0, 0, defaultWidth, defaultHeight);
         this.cameras.main.setBounds(0, 0, defaultWidth, defaultHeight);
+        this.minZoom = 0.5; // Use default min zoom if background failed
     }
 
     // --- Player ---
@@ -327,7 +336,9 @@ export default class MainScene extends Phaser.Scene {
 
     // --- Camera ---
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08); // Smoother follow
-    this.cameras.main.setZoom(this.initialCameraZoomLevel); // Set initial zoom
+    // Set initial zoom, clamped by the calculated minZoom
+    const clampedInitialZoom = Phaser.Math.Clamp(this.initialCameraZoomLevel, this.minZoom, this.maxZoom);
+    this.cameras.main.setZoom(clampedInitialZoom);
 
     // --- Zoom Controls ---
     this.input.on('wheel', (pointer: Phaser.Input.Pointer, gameObjects: Phaser.GameObjects.GameObject[], deltaX: number, deltaY: number, deltaZ: number) => {
@@ -339,7 +350,7 @@ export default class MainScene extends Phaser.Scene {
             // Zoom in
             newZoom = this.cameras.main.zoom + this.zoomIncrement;
         }
-        // Clamp zoom level
+        // Clamp zoom level using the dynamically calculated minZoom
         newZoom = Phaser.Math.Clamp(newZoom, this.minZoom, this.maxZoom);
         this.cameras.main.zoomTo(newZoom, 100); // Smooth zoom over 100ms
     });
@@ -684,4 +695,3 @@ export default class MainScene extends Phaser.Scene {
       super.destroy();
   }
 }
-
