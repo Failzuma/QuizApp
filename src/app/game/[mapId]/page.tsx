@@ -2,7 +2,8 @@
 'use client';
 
 import React, { useEffect, useRef, useState, use } from 'react';
-// import * as Phaser from 'phaser'; // Import Phaser as a namespace - Moved to dynamic import
+// Phaser is dynamically imported within useEffect
+// import * as Phaser from 'phaser';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -78,7 +79,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         let game: Phaser.Game | null = null;
 
         const initPhaser = async () => {
-            if (!gameContainerRef.current || gameInstanceRef.current) {
+            // Ensure we have the mapId before initializing
+            if (!resolvedParams || !gameContainerRef.current || gameInstanceRef.current) {
               return;
             }
 
@@ -87,13 +89,15 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             const { default: MainScene } = await import('@/game/scenes/MainScene');
 
             // Create the scene instance *before* the game config
+            // Pass necessary data (mapId, callback) to the scene via its constructor or an init method
             const mainSceneInstance = new MainScene();
 
             const config: Phaser.Types.Core.GameConfig = {
               type: Phaser.AUTO,
               parent: gameContainerRef.current,
-              width: '100%', // Use percentages or fixed values
-              height: 600, // Fixed height is usually better for Phaser canvas
+              // Set a base size, camera zoom will handle scaling
+              width: 800,
+              height: 600,
               physics: {
                 default: 'arcade',
                 arcade: {
@@ -102,9 +106,15 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 },
               },
               // Pass the scene *instance* here. Phaser will call its init, preload, create methods.
-              scene: [mainSceneInstance],
+              scene: mainSceneInstance,
+              // Ensure pixel art remains crisp
+              render: {
+                pixelArt: true,
+                antialias: false,
+              },
               scale: {
-                  mode: Phaser.Scale.FIT, // Fit the game within the parent container
+                  // Use RESIZE mode to allow the canvas to adapt to the container size
+                  mode: Phaser.Scale.RESIZE,
                   autoCenter: Phaser.Scale.CENTER_BOTH, // Center the game canvas
               },
               // Use postBoot to safely access the scene instance after Phaser setup
@@ -113,20 +123,30 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                   // Access the scene instance using the key provided in its constructor (default is the class name)
                   const scene = bootedGame.scene.getScene('MainScene') as MainSceneType; // Cast to the imported type
                   if (scene) {
-                      // Pass the callback to the scene instance using the dedicated method
-                      scene.setInteractionCallback(handleNodeInteraction);
-                      sceneInstanceRef.current = scene; // Store the scene instance reference
-                      console.log("Scene interaction callback set in postBoot.");
+                      // Initialize the scene with mapId and callback AFTER it's ready
+                      // Check if scene has an init method that accepts data, otherwise use a custom method
+                      if (typeof scene.initScene === 'function') {
+                        scene.initScene({ mapId: resolvedParams.mapId }, handleNodeInteraction);
+                        sceneInstanceRef.current = scene; // Store the scene instance reference
+                        console.log("Scene initialized with data in postBoot.");
+                      } else {
+                        console.error("MainScene does not have an initScene method.");
+                         // Fallback or alternative setup if initScene isn't defined
+                         scene.setInteractionCallback(handleNodeInteraction); // Assuming old method exists
+                         sceneInstanceRef.current = scene;
+                         console.warn("Used legacy setInteractionCallback. Consider adding initScene(data, callback) to MainScene.");
+                      }
+
                   } else {
                       console.error("MainScene not found after boot. Ensure scene key matches.");
                       // Attempt to get by index if key fails (less reliable)
                       const sceneByIndex = bootedGame.scene.scenes[0];
-                       if (sceneByIndex instanceof MainScene) {
-                           sceneByIndex.setInteractionCallback(handleNodeInteraction);
+                       if (sceneByIndex instanceof MainScene && typeof sceneByIndex.initScene === 'function') {
+                           sceneByIndex.initScene({ mapId: resolvedParams.mapId }, handleNodeInteraction);
                            sceneInstanceRef.current = sceneByIndex;
-                           console.log("Scene interaction callback set via index in postBoot.");
+                           console.log("Scene initialized via index in postBoot.");
                        } else {
-                          console.error("Could not get scene instance by key or index.");
+                          console.error("Could not get scene instance by key or index, or initScene missing.");
                        }
                   }
                 }
@@ -146,7 +166,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
           gameInstanceRef.current = null;
           sceneInstanceRef.current = null; // Clear scene ref
         };
-      }, []); // Empty dependency array ensures this runs only once on mount
+      // Add resolvedParams to dependencies to re-initialize if it changes (e.g., navigating between maps)
+      }, [resolvedParams]);
 
   const handleAnswerSubmit = (selectedAnswer: string) => {
       console.log('Answer submitted:', selectedAnswer);
@@ -205,7 +226,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
              <div
                 ref={gameContainerRef}
                 id="phaser-game-container"
-                className="w-full h-[600px] bg-muted border border-muted-foreground overflow-hidden rounded-lg shadow-md" // Added rounded corners and shadow
+                // Use aspect-ratio to maintain shape, height is less critical with camera follow
+                className="w-full aspect-video bg-muted border border-muted-foreground overflow-hidden rounded-lg shadow-md"
              >
                  {/* Phaser canvas will be injected here */}
              </div>
@@ -218,7 +240,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 <CardTitle>Session Leaderboard</CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[550px] pr-4"> {/* Adjusted height slightly */}
+                 {/* Adjust height based on typical game container height */}
+                <ScrollArea className="h-[450px] md:h-[550px] pr-4">
                   <ul className="space-y-4">
                     {players.map((player, index) => (
                       <li key={player.id} className="flex items-center justify-between p-2 rounded hover:bg-secondary transition-colors"> {/* Added hover effect */}
