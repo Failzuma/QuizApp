@@ -7,12 +7,12 @@ import React, { useEffect, useRef, useState, use } from 'react';
 import { Header } from '@/components/Header';
 // Footer removed to maximize game area
 // import { Footer } from '@/components/Footer';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'; // Added CardDescription
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input'; // Import Input component
-import { X, Trophy } from 'lucide-react'; // Added Trophy icon for HUD
+import { X, Trophy, Target } from 'lucide-react'; // Added Trophy icon for HUD, Target for current node
 import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
 import type { NodeInteractionCallback } from '@/game/scenes/MainScene'; // Import the type only
 import { useToast } from "@/hooks/use-toast"; // Import useToast
@@ -28,18 +28,20 @@ const mockPlayers = [
 ];
 
 // More dynamic mock quiz based on node interaction
-const mockQuizzes: Record<string, { type: string; question: string; options: string[]; correctAnswer: string }> = {
+const mockQuizzes: Record<string, { type: string; question: string; options: string[]; correctAnswer: string, nodeDescription: string }> = {
     'node_quiz1': {
         type: 'multiple-choice',
         question: 'Which HTML tag is used to define an internal style sheet?',
         options: ['<style>', '<script>', '<css>', '<link>'],
-        correctAnswer: '<style>'
+        correctAnswer: '<style>',
+        nodeDescription: 'CSS Styling Basics Node'
     },
     'node_quiz2': {
         type: 'short-answer', // Example of different type
         question: 'What does CSS stand for?',
         options: [], // No options for short answer initially in this UI
-        correctAnswer: 'Cascading Style Sheets'
+        correctAnswer: 'Cascading Style Sheets',
+        nodeDescription: 'CSS Acronym Node'
     }
 };
 
@@ -73,6 +75,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
         // --- CRITICAL: Disable Phaser player input when quiz opens ---
         sceneInstanceRef.current?.disablePlayerInput();
+        // --- Highlight the node in Phaser ---
+        sceneInstanceRef.current?.highlightNode(nodeId);
 
         // Focus the input field shortly after the modal appears for short answers
         if (quizData.type === 'short-answer') {
@@ -81,9 +85,11 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     } else {
         console.warn(`No quiz found for nodeId: ${nodeId}`);
         // If no quiz, immediately signal Phaser to remove the non-interactive node
-        removeNode(nodeId);
+        // This case might not be desirable, maybe just re-enable? Let's re-enable for now.
+        reEnableNode(nodeId);
         // --- Ensure input is enabled if no quiz is shown ---
         sceneInstanceRef.current?.enablePlayerInput();
+        sceneInstanceRef.current?.clearNodeHighlight(nodeId); // Clear highlight if no quiz
     }
   };
 
@@ -97,10 +103,11 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     }
   };
 
-  // Function to signal Phaser to re-enable a node
+  // Function to signal Phaser to re-enable a node (only used when closing quiz now)
   const reEnableNode = (nodeId: string) => {
        if (sceneInstanceRef.current && typeof sceneInstanceRef.current.reEnableNode === 'function') {
            sceneInstanceRef.current.reEnableNode(nodeId);
+           sceneInstanceRef.current.clearNodeHighlight(nodeId); // Also clear highlight
        } else {
            console.warn("Scene instance ref not set or reEnableNode not available, cannot re-enable node.");
        }
@@ -315,25 +322,21 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
           variant: isCorrect ? "default" : "destructive", // Use default (usually green/blue) for correct, destructive (red) for wrong
       });
 
-
+      // Update player score only if correct
       if (isCorrect) {
           console.log("Correct!");
-          // Update player score (example)
           setPlayers(prevPlayers => prevPlayers.map(p =>
               p.name === 'You' ? { ...p, score: p.score + 10 } : p
           ).sort((a, b) => b.score - a.score));
-
-           // Remove the node from Phaser now that it's answered correctly
-            removeNode(currentQuizNodeId);
-
       } else {
           console.log("Incorrect!");
-           // If wrong, re-enable the node and start cooldown
-           reEnableNode(currentQuizNodeId);
-           startInteractionCooldown(1500); // Example: 1.5 second cooldown
+          // No score update for wrong answers
       }
-      setShowQuiz(false); // Hide quiz after answering
 
+      // --- CRITICAL: Remove the node from Phaser REGARDLESS of the answer ---
+      removeNode(currentQuizNodeId);
+
+      setShowQuiz(false); // Hide quiz after answering
 
        // --- CRITICAL: Re-enable Phaser player input ---
        sceneInstanceRef.current?.enablePlayerInput();
@@ -351,7 +354,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
       if (currentQuizNodeId && sceneInstanceRef.current) {
          // Re-enable the node's physics body
-         reEnableNode(currentQuizNodeId);
+         reEnableNode(currentQuizNodeId); // This now also clears highlight
 
          // Start the interaction cooldown in Phaser
          startInteractionCooldown(1500); // 1.5 seconds cooldown
@@ -441,12 +444,17 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 <Card className="w-full max-w-lg shadow-xl border-primary border-2"> {/* Added primary border */}
                     <CardHeader>
                         <div className="flex justify-between items-center">
-                        <CardTitle className="text-primary">Quiz Time!</CardTitle> {/* Styled title */}
+                           <div>
+                                <CardTitle className="text-primary flex items-center gap-2">
+                                    <Target className="h-5 w-5"/> {/* Icon for Node */}
+                                    {currentQuiz.nodeDescription || "Quiz Time!"} {/* Show node description */}
+                                </CardTitle>
+                                <CardDescription>Answer the question below.</CardDescription>
+                           </div>
                         <Button variant="ghost" size="icon" onClick={closeQuiz}>
                             <X className="h-5 w-5 text-muted-foreground hover:text-foreground" /> {/* Styled close button */}
                         </Button>
-                    </div>
-
+                        </div>
                     </CardHeader>
                     <CardContent>
                     <p className="mb-6 text-lg font-medium">{currentQuiz.question}</p> {/* Increased margin */}

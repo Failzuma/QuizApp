@@ -28,6 +28,7 @@ export default class MainScene extends Phaser.Scene {
   private interactionOnCooldown = false; // Flag to manage node interaction cooldown
   private cooldownTimerEvent?: Phaser.Time.TimerEvent; // Timer event for cooldown
   private joystickDirection: { x: number; y: number } = { x: 0, y: 0 }; // Store joystick vector
+  private highlightedNodeId: string | null = null; // Track the currently highlighted node
 
 
   constructor() {
@@ -376,14 +377,19 @@ export default class MainScene extends Phaser.Scene {
 
      this.onNodeInteract(nodeId); // Call the callback function passed from React to show the quiz
 
+     // Highlight the node visually
+     this.highlightNode(nodeId);
+
      // The node is now visually present but non-interactive.
      // It will be fully removed by the removeNode function (if answered correctly)
      // or re-enabled by reEnableNode (if closed or answered incorrectly).
    }
 
-   // Method called from React to completely remove a node after it's answered CORRECTLY
+   // Method called from React to completely remove a node after it's answered (correctly OR incorrectly)
    removeNode(nodeId: string) {
      if (!this.nodes) return;
+
+     this.clearNodeHighlight(nodeId); // Ensure highlight is cleared before removing
 
      const nodeToRemove = this.nodes.getChildren().find(node => {
        const spriteNode = node as Phaser.Physics.Arcade.Sprite;
@@ -398,9 +404,11 @@ export default class MainScene extends Phaser.Scene {
      }
    }
 
-   // Method called from React to re-enable a node if quiz is closed without answering or answered INCORRECTLY
+   // Method called from React to re-enable a node if quiz is closed without answering
    reEnableNode(nodeId: string) {
        if (!this.nodes) return;
+
+        this.clearNodeHighlight(nodeId); // Ensure highlight is cleared
 
        const nodeToReEnable = this.nodes.getChildren().find(node => {
            const spriteNode = node as Phaser.Physics.Arcade.Sprite;
@@ -490,6 +498,47 @@ export default class MainScene extends Phaser.Scene {
              // console.log("Joystick End");
             this.joystickDirection.x = 0;
             this.joystickDirection.y = 0;
+        }
+    }
+
+    // Method to highlight a specific node
+    highlightNode(nodeId: string) {
+        if (!this.nodes) return;
+
+        // Clear previous highlight first
+        this.clearNodeHighlight(this.highlightedNodeId);
+
+        const nodeToHighlight = this.nodes.getChildren().find(node => {
+            const spriteNode = node as Phaser.Physics.Arcade.Sprite;
+            return spriteNode.getData('nodeId') === nodeId;
+        }) as Phaser.Physics.Arcade.Sprite | undefined;
+
+        if (nodeToHighlight) {
+            console.log(`Highlighting node: ${nodeId}`);
+            nodeToHighlight.setTint(0xffaa00); // Example highlight color (orange)
+             nodeToHighlight.setScale(nodeToHighlight.scale * 1.2); // Make it slightly larger
+            this.highlightedNodeId = nodeId;
+        } else {
+             console.warn(`Node with ID ${nodeId} not found to highlight.`);
+        }
+    }
+
+    // Method to clear highlight from a node
+    clearNodeHighlight(nodeId: string | null) {
+        if (!this.nodes || !nodeId) return;
+
+        const nodeToClear = this.nodes.getChildren().find(node => {
+            const spriteNode = node as Phaser.Physics.Arcade.Sprite;
+            return spriteNode.getData('nodeId') === nodeId;
+        }) as Phaser.Physics.Arcade.Sprite | undefined;
+
+        if (nodeToClear && nodeToClear.isTinted) {
+            console.log(`Clearing highlight from node: ${nodeId}`);
+            nodeToClear.clearTint();
+            nodeToClear.setScale(nodeToClear.scale / 1.2); // Reset scale
+            if (this.highlightedNodeId === nodeId) {
+                this.highlightedNodeId = null;
+            }
         }
     }
 
@@ -601,6 +650,7 @@ export default class MainScene extends Phaser.Scene {
           this.cooldownTimerEvent.remove(false);
       }
        this.joystickDirection = { x: 0, y: 0 }; // Reset joystick state on shutdown
+       this.clearNodeHighlight(this.highlightedNodeId); // Clear any active highlight
   }
 
   destroy() {
@@ -608,6 +658,7 @@ export default class MainScene extends Phaser.Scene {
           this.cooldownTimerEvent.remove(false);
       }
       this.joystickDirection = { x: 0, y: 0 }; // Reset joystick state on destroy
+      this.clearNodeHighlight(this.highlightedNodeId); // Clear any active highlight
       super.destroy();
   }
 }
