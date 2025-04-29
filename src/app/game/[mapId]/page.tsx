@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, use } from 'react'; // Added 'use'
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,7 +38,8 @@ const PhaserGamePlaceholder: React.FC = () => {
 };
 
 
-export default function GamePage({ params }: { params: { mapId: string } }) {
+export default function GamePage({ params }: { params: Promise<{ mapId: string }> }) { // params is a Promise now
+  const resolvedParams = use(params); // Unwrap the params Promise
   const [players, setPlayers] = useState(mockPlayers.sort((a, b) => b.score - a.score));
   const [showQuiz, setShowQuiz] = useState(false); // Control quiz visibility
 
@@ -71,7 +72,8 @@ export default function GamePage({ params }: { params: { mapId: string } }) {
     <div className="flex flex-col min-h-screen">
       <Header />
       <main className="flex-grow container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-2 text-primary">Map: {decodeURIComponent(params.mapId)}</h1>
+        {/* Use resolvedParams here */}
+        <h1 className="text-2xl font-bold mb-2 text-primary">Map: {decodeURIComponent(resolvedParams.mapId)}</h1>
         <p className="text-muted-foreground mb-6">Room Code: <span className="font-mono bg-muted px-2 py-1 rounded">XYZ123</span> (Placeholder)</p>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 relative">
