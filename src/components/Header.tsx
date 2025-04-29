@@ -14,17 +14,22 @@ export function Header() {
   const navItems = [
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/profile', label: 'Profile' },
-    { href: '/login', label: 'Login' },
-    { href: '/register', label: 'Register' },
+    // Login/Register links are handled separately for mobile/desktop actions
     // Add Admin link conditionally later
     // { href: '/admin', label: 'Admin Panel' },
   ];
 
+  // Separate links for authentication actions for clarity
+  const authNavItems = [
+     { href: '/login', label: 'Login' },
+     { href: '/register', label: 'Register' },
+  ]
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-14 max-w-screen-2xl items-center">
-        {/* Logo and Desktop Nav (if any) */}
-        <div className="flex items-center flex-1">
+        {/* Logo and Primary Navigation (Left Side) */}
+        <div className="flex items-center mr-auto"> {/* Changed flex-1 to mr-auto for clarity */}
           <Link href="/" className="mr-6 flex items-center space-x-2">
             <PixelMapIcon />
             <span className="hidden font-bold sm:inline-block">
@@ -33,11 +38,19 @@ export function Header() {
           </Link>
           {/* Desktop nav items can go here if needed beyond user actions */}
            <nav className="hidden md:flex items-center gap-6 text-sm">
-             {/* Example: <Link href="/about">About</Link> */}
+             {navItems.map((item) => ( // Render main nav items here if any
+                 <Link
+                  key={item.href}
+                  href={item.href}
+                  className="text-foreground hover:text-primary transition-colors"
+                >
+                  {item.label}
+                </Link>
+             ))}
            </nav>
         </div>
 
-        {/* Mobile Menu Trigger */}
+        {/* Mobile Menu Trigger (Right side on mobile) */}
         <div className="md:hidden">
            <Sheet>
               <SheetTrigger asChild>
@@ -54,12 +67,13 @@ export function Header() {
                   <PixelMapIcon />
                   <span className="font-bold">QuizApp</span>
                 </Link>
-                <nav className="flex flex-col gap-3 px-6"> {/* Adjusted gap and padding */}
-                  {navItems.map((item) => (
+                {/* Combine main and auth links for mobile menu */}
+                <nav className="flex flex-col gap-3 px-6">
+                  {[...navItems, ...authNavItems].map((item) => (
                      <Link
                       key={item.href}
                       href={item.href}
-                      className="text-foreground hover:text-primary transition-colors py-1" // Added padding
+                      className="text-foreground hover:text-primary transition-colors py-1"
                     >
                       {item.label}
                     </Link>
@@ -69,7 +83,8 @@ export function Header() {
             </Sheet>
         </div>
 
-        {/* Desktop User Actions (Login/Register) */}
+        {/* Desktop User Actions (Login/Register - Far Right) */}
+        {/* This div will be pushed to the right because the first div has mr-auto */}
         <div className="hidden md:flex items-center gap-2">
             <Button variant="ghost" asChild>
               <Link href="/login">Login</Link>
