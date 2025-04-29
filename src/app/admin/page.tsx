@@ -1,3 +1,5 @@
+'use client'; // Add 'use client' directive
+
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,12 +26,11 @@ const mockSessionResults = [
 ];
 
 export default function AdminPage() {
-  // TODO: Add role-based access control check here
+  // TODO: Add role-based access control check here (consider moving logic if this becomes complex server-side check)
 
   const handleExportResults = () => {
-      // TODO: Implement CSV export functionality
+      // This function uses browser APIs, so it's suitable for a Client Component
       console.log("Exporting session results...");
-      // Example: Convert mockSessionResults to CSV string and trigger download
       const headers = "Session ID,Map Title,Date,Participants,Average Score\n";
       const csvContent = mockSessionResults.map(s =>
         `${s.id},"${s.mapTitle}",${s.date},${s.participants},${s.avgScore}`
@@ -44,6 +45,10 @@ export default function AdminPage() {
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
+          URL.revokeObjectURL(url); // Clean up object URL
+      } else {
+        // Fallback or error message if download attribute is not supported
+        alert("CSV export is not supported in this browser.");
       }
   };
 
@@ -160,6 +165,7 @@ export default function AdminPage() {
               <CardHeader>
                  <div className="flex justify-between items-center">
                     <CardTitle>View Session Results</CardTitle>
+                    {/* Button onClick is now allowed because this is a Client Component */}
                     <Button size="sm" variant="outline" onClick={handleExportResults}>
                         <Download className="mr-2 h-4 w-4" /> Export Results (CSV)
                     </Button>
