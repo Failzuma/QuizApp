@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, use } from 'react';
-import * as Phaser from 'phaser'; // Import Phaser as a namespace
+// import * as Phaser from 'phaser'; // Import Phaser as a namespace - Moved to dynamic import
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
-import MainScene, { type NodeInteractionCallback } from '@/game/scenes/MainScene'; // Import the Phaser scene and type
+import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
+import type { NodeInteractionCallback } from '@/game/scenes/MainScene'; // Import the type only
 
 // Mock Data - Replace with real-time data later
 const mockPlayers = [
@@ -44,7 +45,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   const [currentQuiz, setCurrentQuiz] = useState<typeof mockQuizzes[string] | null>(null);
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
-  const sceneInstanceRef = useRef<MainScene | null>(null);
+  const sceneInstanceRef = useRef<MainSceneType | null>(null); // Use the imported type
 
 
   // Callback function for Phaser scene to trigger quiz
@@ -74,60 +75,69 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
   // Initialize Phaser Game
    useEffect(() => {
-        if (!gameContainerRef.current || gameInstanceRef.current) {
-          return;
+        let game: Phaser.Game | null = null;
+
+        const initPhaser = async () => {
+            if (!gameContainerRef.current || gameInstanceRef.current) {
+              return;
+            }
+
+            // Dynamically import Phaser and the Scene
+            const Phaser = await import('phaser');
+            const { default: MainScene } = await import('@/game/scenes/MainScene');
+
+            // Create the scene instance *before* the game config
+            const mainSceneInstance = new MainScene();
+
+            const config: Phaser.Types.Core.GameConfig = {
+              type: Phaser.AUTO,
+              parent: gameContainerRef.current,
+              width: '100%', // Use percentages or fixed values
+              height: 600, // Fixed height is usually better for Phaser canvas
+              physics: {
+                default: 'arcade',
+                arcade: {
+                  gravity: { y: 0 },
+                  // debug: process.env.NODE_ENV === 'development' // Optional debug drawing
+                },
+              },
+              // Pass the scene *instance* here. Phaser will call its init, preload, create methods.
+              scene: [mainSceneInstance],
+              scale: {
+                  mode: Phaser.Scale.FIT, // Fit the game within the parent container
+                  autoCenter: Phaser.Scale.CENTER_BOTH, // Center the game canvas
+              },
+              // Use postBoot to safely access the scene instance after Phaser setup
+              callbacks: {
+                postBoot: (bootedGame) => {
+                  // Access the scene instance using the key provided in its constructor (default is the class name)
+                  const scene = bootedGame.scene.getScene('MainScene') as MainSceneType; // Cast to the imported type
+                  if (scene) {
+                      // Pass the callback to the scene instance using the dedicated method
+                      scene.setInteractionCallback(handleNodeInteraction);
+                      sceneInstanceRef.current = scene; // Store the scene instance reference
+                      console.log("Scene interaction callback set in postBoot.");
+                  } else {
+                      console.error("MainScene not found after boot. Ensure scene key matches.");
+                      // Attempt to get by index if key fails (less reliable)
+                      const sceneByIndex = bootedGame.scene.scenes[0];
+                       if (sceneByIndex instanceof MainScene) {
+                           sceneByIndex.setInteractionCallback(handleNodeInteraction);
+                           sceneInstanceRef.current = sceneByIndex;
+                           console.log("Scene interaction callback set via index in postBoot.");
+                       } else {
+                          console.error("Could not get scene instance by key or index.");
+                       }
+                  }
+                }
+              }
+            };
+
+            game = new Phaser.Game(config);
+            gameInstanceRef.current = game;
         }
 
-        // Create the scene instance *before* the game config
-        // This ensures constructor runs, but init/create run via Phaser lifecycle
-        const mainSceneInstance = new MainScene();
-
-        const config: Phaser.Types.Core.GameConfig = {
-          type: Phaser.AUTO,
-          parent: gameContainerRef.current,
-          width: '100%', // Use percentages or fixed values
-          height: 600, // Fixed height is usually better for Phaser canvas
-          physics: {
-            default: 'arcade',
-            arcade: {
-              gravity: { y: 0 },
-              // debug: process.env.NODE_ENV === 'development' // Optional debug drawing
-            },
-          },
-          // Pass the scene *instance* here. Phaser will call its init, preload, create methods.
-          scene: [mainSceneInstance],
-          scale: {
-              mode: Phaser.Scale.FIT, // Fit the game within the parent container
-              autoCenter: Phaser.Scale.CENTER_BOTH, // Center the game canvas
-          },
-          // Use postBoot to safely access the scene instance after Phaser setup
-          callbacks: {
-            postBoot: (game) => {
-              // Access the scene instance using the key provided in its constructor (default is the class name)
-              const scene = game.scene.getScene('MainScene') as MainScene;
-              if (scene) {
-                  // Pass the callback to the scene instance using the dedicated method
-                  scene.setInteractionCallback(handleNodeInteraction);
-                  sceneInstanceRef.current = scene; // Store the scene instance reference
-                  console.log("Scene interaction callback set in postBoot.");
-              } else {
-                  console.error("MainScene not found after boot. Ensure scene key matches.");
-                  // Attempt to get by index if key fails (less reliable)
-                  const sceneByIndex = game.scene.scenes[0] as MainScene;
-                   if (sceneByIndex instanceof MainScene) {
-                       sceneByIndex.setInteractionCallback(handleNodeInteraction);
-                       sceneInstanceRef.current = sceneByIndex;
-                       console.log("Scene interaction callback set via index in postBoot.");
-                   } else {
-                      console.error("Could not get scene instance by key or index.");
-                   }
-              }
-            }
-          }
-        };
-
-        const game = new Phaser.Game(config);
-        gameInstanceRef.current = game;
+        initPhaser();
 
 
         return () => {
@@ -162,7 +172,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
       // Re-enable the node in Phaser only if we found the ID
       if(currentNodeId) {
-        reEnableNode(currentNodeId);
+          reEnableNode(currentNodeId);
       } else {
         console.warn("Could not find Node ID for the submitted quiz to re-enable.");
       }
