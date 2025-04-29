@@ -16,6 +16,8 @@ import { X, Trophy } from 'lucide-react'; // Added Trophy icon for HUD
 import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
 import type { NodeInteractionCallback } from '@/game/scenes/MainScene'; // Import the type only
 import { useToast } from "@/hooks/use-toast"; // Import useToast
+import { useIsMobile } from "@/hooks/use-mobile"; // Import useIsMobile hook
+import type nipplejs from 'nipplejs'; // Import nipplejs type only for type checking
 
 // Mock Data - Replace with real-time data later
 const mockPlayers = [
@@ -54,6 +56,9 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   const sceneInstanceRef = useRef<MainSceneType | null>(null); // Use the imported type
   const { toast } = useToast(); // Initialize toast
   const shortAnswerInputRef = useRef<HTMLInputElement>(null); // Ref for short answer input
+  const isMobile = useIsMobile(); // Check if mobile device
+  const joystickManagerRef = useRef<nipplejs.JoystickManager | null>(null);
+  const joystickZoneRef = useRef<HTMLDivElement>(null); // Ref for the joystick container
 
 
   // Callback function for Phaser scene to trigger quiz
@@ -66,8 +71,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         setShowQuiz(true);
         setShortAnswerValue(''); // Clear previous short answer
 
-        // --- CRITICAL: Disable Phaser keyboard input when quiz opens ---
-        sceneInstanceRef.current?.disableKeyboardInput();
+        // --- CRITICAL: Disable Phaser player input when quiz opens ---
+        sceneInstanceRef.current?.disablePlayerInput();
 
         // Focus the input field shortly after the modal appears for short answers
         if (quizData.type === 'short-answer') {
@@ -78,7 +83,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         // If no quiz, immediately signal Phaser to remove the non-interactive node
         removeNode(nodeId);
         // --- Ensure input is enabled if no quiz is shown ---
-        sceneInstanceRef.current?.enableKeyboardInput();
+        sceneInstanceRef.current?.enablePlayerInput();
     }
   };
 
@@ -91,6 +96,24 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         console.warn("Scene instance ref not set, cannot remove node.");
     }
   };
+
+  // Function to signal Phaser to re-enable a node
+  const reEnableNode = (nodeId: string) => {
+       if (sceneInstanceRef.current && typeof sceneInstanceRef.current.reEnableNode === 'function') {
+           sceneInstanceRef.current.reEnableNode(nodeId);
+       } else {
+           console.warn("Scene instance ref not set or reEnableNode not available, cannot re-enable node.");
+       }
+   };
+
+    // Function to signal Phaser to start cooldown
+    const startInteractionCooldown = (duration: number) => {
+        if (sceneInstanceRef.current && typeof sceneInstanceRef.current.startInteractionCooldown === 'function') {
+            sceneInstanceRef.current.startInteractionCooldown(duration);
+        } else {
+            console.warn("Scene instance ref not set or startInteractionCooldown not available.");
+        }
+    };
 
 
   // Initialize Phaser Game
@@ -197,6 +220,67 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
       // Add resolvedParams to dependencies to re-initialize if it changes (e.g., navigating between maps)
       }, [resolvedParams]);
 
+
+    // Initialize Joystick for mobile
+     useEffect(() => {
+        let manager: nipplejs.JoystickManager | null = null;
+
+        const initJoystick = async () => {
+            if (isMobile && joystickZoneRef.current && !joystickManagerRef.current) {
+                console.log("Initializing joystick...");
+                // Dynamically import nipplejs
+                const nipplejs = (await import('nipplejs')).default;
+
+                manager = nipplejs.create({
+                    zone: joystickZoneRef.current, // The DOM element for the joystick area
+                    mode: 'static', // Joystick stays in one place
+                    position: { left: '15%', bottom: '20%' }, // Position on screen
+                    color: 'rgba(255, 255, 255, 0.5)', // Semi-transparent white
+                    size: 100, // Size of the joystick base
+                    threshold: 0.1, // Minimum distance threshold to trigger move
+                    fadeTime: 250, // Fade time for the joystick appearance
+                });
+
+                joystickManagerRef.current = manager;
+
+                manager.on('move', (evt, data) => {
+                    // Pass joystick data to Phaser scene
+                    if (sceneInstanceRef.current?.joystickInput) {
+                         sceneInstanceRef.current.joystickInput(data);
+                     } else {
+                         console.warn("Scene instance or joystickInput method not available.");
+                     }
+                });
+
+                manager.on('end', () => {
+                     // Signal Phaser scene that joystick is released
+                     if (sceneInstanceRef.current?.joystickInput) {
+                        sceneInstanceRef.current.joystickInput({
+                            vector: { x: 0, y: 0 },
+                            force: 0,
+                            angle: { radian: 0, degree: 0 },
+                            direction: undefined, // Indicate stop
+                        });
+                     } else {
+                         console.warn("Scene instance or joystickInput method not available.");
+                     }
+                });
+
+                 console.log("Joystick initialized.");
+            }
+        };
+
+        initJoystick();
+
+        return () => {
+            if (joystickManagerRef.current) {
+                console.log("Destroying joystick...");
+                joystickManagerRef.current.destroy();
+                joystickManagerRef.current = null;
+            }
+        };
+     }, [isMobile]); // Re-run if isMobile changes (though unlikely during component lifetime)
+
     const submitShortAnswer = () => {
         handleAnswerSubmit(shortAnswerValue);
     }
@@ -239,16 +323,20 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
               p.name === 'You' ? { ...p, score: p.score + 10 } : p
           ).sort((a, b) => b.score - a.score));
 
+           // Remove the node from Phaser now that it's answered correctly
+            removeNode(currentQuizNodeId);
+
       } else {
           console.log("Incorrect!");
+           // If wrong, re-enable the node and start cooldown
+           reEnableNode(currentQuizNodeId);
+           startInteractionCooldown(1500); // Example: 1.5 second cooldown
       }
       setShowQuiz(false); // Hide quiz after answering
 
-      // Remove the node from Phaser now that it's answered
-      removeNode(currentQuizNodeId);
 
-       // --- CRITICAL: Re-enable Phaser keyboard input ---
-       sceneInstanceRef.current?.enableKeyboardInput();
+       // --- CRITICAL: Re-enable Phaser player input ---
+       sceneInstanceRef.current?.enablePlayerInput();
 
       setCurrentQuiz(null); // Reset current quiz
       setCurrentQuizNodeId(null); // Reset current node ID
@@ -263,28 +351,18 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
       if (currentQuizNodeId && sceneInstanceRef.current) {
          // Re-enable the node's physics body
-         if (typeof sceneInstanceRef.current.reEnableNode === 'function') {
-            sceneInstanceRef.current.reEnableNode(currentQuizNodeId);
-         } else {
-            console.warn("Could not re-enable node on quiz close.");
-         }
+         reEnableNode(currentQuizNodeId);
 
          // Start the interaction cooldown in Phaser
-         if (typeof sceneInstanceRef.current.startInteractionCooldown === 'function') {
-             const cooldownDuration = 1500; // 1.5 seconds cooldown
-             console.log(`Starting node interaction cooldown for ${cooldownDuration}ms`);
-             sceneInstanceRef.current.startInteractionCooldown(cooldownDuration);
-         } else {
-              console.warn("Could not start interaction cooldown.");
-         }
+         startInteractionCooldown(1500); // 1.5 seconds cooldown
 
       } else {
           console.warn("Could not find node ID to re-enable/apply cooldown.");
       }
 
 
-        // --- CRITICAL: Re-enable Phaser keyboard input ---
-       sceneInstanceRef.current?.enableKeyboardInput();
+        // --- CRITICAL: Re-enable Phaser player input ---
+       sceneInstanceRef.current?.enablePlayerInput();
 
       setCurrentQuiz(null);
       setCurrentQuizNodeId(null);
@@ -306,6 +384,18 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         >
           {/* Phaser canvas will be injected here */}
         </div>
+
+        {/* Mobile Joystick Area - Positioned over the game area */}
+         {isMobile && (
+            <div
+              ref={joystickZoneRef}
+              id="joystick-zone"
+              className="absolute bottom-0 left-0 w-1/2 h-1/2 z-30" // Position bottom-left, adjust size as needed
+              style={{ pointerEvents: showQuiz ? 'none' : 'auto' }} // Disable joystick when quiz is shown
+            >
+              {/* Joystick will be created here by nipplejs */}
+            </div>
+         )}
 
         {/* Map Title and Room Code Overlay */}
         <div className="absolute top-4 left-4 z-10 bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">

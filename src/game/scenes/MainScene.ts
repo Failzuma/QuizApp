@@ -1,5 +1,6 @@
 
 import * as Phaser from 'phaser';
+import type { JoystickManager, JoystickOutputData } from 'nipplejs'; // Import types for joystick data
 
 // Define the types for the interaction callback
 export type NodeInteractionCallback = (nodeId: string) => void;
@@ -23,9 +24,10 @@ export default class MainScene extends Phaser.Scene {
   private maxZoom = 3; // Maximum zoom level
   private zoomIncrement = 0.1; // How much to zoom per step
   private playerScale = 1.5; // Make player larger
-  private keyboardInputEnabled = true; // Flag to control player movement input
+  private playerInputEnabled = true; // Flag to control player movement input
   private interactionOnCooldown = false; // Flag to manage node interaction cooldown
   private cooldownTimerEvent?: Phaser.Time.TimerEvent; // Timer event for cooldown
+  private joystickDirection: { x: number; y: number } = { x: 0, y: 0 }; // Store joystick vector
 
 
   constructor() {
@@ -294,20 +296,20 @@ export default class MainScene extends Phaser.Scene {
         // Stop propagation for keys used by player movement IF THEY CONFLICT with UI
         // Example: Stop spacebar propagation ONLY when keyboard input is disabled (quiz active)
         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE).on('down', (event: KeyboardEvent) => {
-             if (!this.keyboardInputEnabled) { // Only interfere when UI is active
+             if (!this.playerInputEnabled) { // Only interfere when UI is active
                  event.stopPropagation();
              }
         });
         // Consider doing the same for W, A, S, D if needed, but test carefully
-         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
-         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
-         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
-         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W).on('down', (event: KeyboardEvent) => { if (!this.playerInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A).on('down', (event: KeyboardEvent) => { if (!this.playerInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S).on('down', (event: KeyboardEvent) => { if (!this.playerInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D).on('down', (event: KeyboardEvent) => { if (!this.playerInputEnabled) event.stopPropagation(); });
          // Add for Arrow Keys as well if they cause issues
-         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
-         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
-         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
-         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT).on('down', (event: KeyboardEvent) => { if (!this.keyboardInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP).on('down', (event: KeyboardEvent) => { if (!this.playerInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN).on('down', (event: KeyboardEvent) => { if (!this.playerInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT).on('down', (event: KeyboardEvent) => { if (!this.playerInputEnabled) event.stopPropagation(); });
+         this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT).on('down', (event: KeyboardEvent) => { if (!this.playerInputEnabled) event.stopPropagation(); });
     }
 
 
@@ -348,7 +350,7 @@ export default class MainScene extends Phaser.Scene {
 
      // Check if interaction is currently on cooldown
      if (this.interactionOnCooldown) {
-         console.log("Interaction on cooldown, ignoring overlap.");
+         // console.log("Interaction on cooldown, ignoring overlap."); // Can be noisy
          return;
      }
 
@@ -369,16 +371,17 @@ export default class MainScene extends Phaser.Scene {
      console.log(`Player overlapped with node: ${nodeId}`);
 
      // Important: Disable the node's body *immediately* to prevent multiple triggers
-     // while the React quiz is open. We'll remove it fully later via removeNode.
+     // while the React quiz is open. We'll remove it fully later via removeNode if correct.
      spriteNode.disableBody(false, false); // Disable physics but keep visible initially
 
      this.onNodeInteract(nodeId); // Call the callback function passed from React to show the quiz
 
      // The node is now visually present but non-interactive.
-     // It will be fully removed by the removeNode function called from React after the quiz.
+     // It will be fully removed by the removeNode function (if answered correctly)
+     // or re-enabled by reEnableNode (if closed or answered incorrectly).
    }
 
-   // Method called from React to completely remove a node after it's answered
+   // Method called from React to completely remove a node after it's answered CORRECTLY
    removeNode(nodeId: string) {
      if (!this.nodes) return;
 
@@ -395,7 +398,7 @@ export default class MainScene extends Phaser.Scene {
      }
    }
 
-   // Method called from React to re-enable a node if quiz is closed without answering
+   // Method called from React to re-enable a node if quiz is closed without answering or answered INCORRECTLY
    reEnableNode(nodeId: string) {
        if (!this.nodes) return;
 
@@ -405,8 +408,17 @@ export default class MainScene extends Phaser.Scene {
        }) as Phaser.Physics.Arcade.Sprite | undefined;
 
        if (nodeToReEnable) {
-           console.log(`Re-enabling node: ${nodeId}`);
-           nodeToReEnable.enableBody(false, 0, 0, true, true); // Re-enable physics body
+           // Only re-enable if the node actually still exists (hasn't been destroyed by removeNode)
+           if (nodeToReEnable.active) {
+               console.log(`Re-enabling node: ${nodeId}`);
+               nodeToReEnable.enableBody(false, 0, 0, true, true); // Re-enable physics body
+               // Ensure animation restarts if needed
+               if (!nodeToReEnable.anims.isPlaying) {
+                  nodeToReEnable.anims.play('node_active', true);
+               }
+           } else {
+               console.log(`Node ${nodeId} was already destroyed, cannot re-enable.`);
+           }
        } else {
            console.warn(`Node with ID ${nodeId} not found to re-enable.`);
        }
@@ -429,10 +441,11 @@ export default class MainScene extends Phaser.Scene {
         }, [], this);
     }
 
-   // Methods to control keyboard input enabling/disabling
-   disableKeyboardInput() {
-       console.log("Disabling Phaser keyboard input.");
-       this.keyboardInputEnabled = false;
+   // Methods to control player input enabling/disabling
+   disablePlayerInput() {
+       console.log("Disabling Phaser player input (keyboard & joystick).");
+       this.playerInputEnabled = false;
+       this.joystickDirection = { x: 0, y: 0 }; // Reset joystick direction state
        // Stop player movement immediately when input is disabled
        if (this.player && this.player.body) {
          this.player.setVelocity(0);
@@ -447,9 +460,9 @@ export default class MainScene extends Phaser.Scene {
        }
    }
 
-   enableKeyboardInput() {
-       console.log("Enabling Phaser keyboard input.");
-       this.keyboardInputEnabled = true;
+   enablePlayerInput() {
+       console.log("Enabling Phaser player input (keyboard & joystick).");
+       this.playerInputEnabled = true;
        // Ensure cursors/WASD are available if they were somehow cleared (shouldn't happen with current logic)
        if (this.input.keyboard && !this.cursors) {
             this.cursors = this.input.keyboard.createCursorKeys();
@@ -459,69 +472,114 @@ export default class MainScene extends Phaser.Scene {
        }
    }
 
+   // Method to receive joystick input data from React component
+   joystickInput(data: JoystickOutputData) {
+        if (!this.playerInputEnabled) {
+             this.joystickDirection = { x: 0, y: 0 }; // Ensure direction is zeroed if input disabled
+             return;
+        }
+
+        if (data.direction) {
+            // Use the angle to determine direction
+            const angle = data.angle.radian;
+            this.joystickDirection.x = Math.cos(angle);
+            this.joystickDirection.y = Math.sin(angle); // Y is typically inverted in screen coordinates vs math angle
+            // console.log(`Joystick Move: Angle=${data.angle.degree}, Vector=(${this.joystickDirection.x.toFixed(2)}, ${this.joystickDirection.y.toFixed(2)})`);
+        } else {
+            // Joystick released or centered
+             // console.log("Joystick End");
+            this.joystickDirection.x = 0;
+            this.joystickDirection.y = 0;
+        }
+    }
+
 
   update(time: number, delta: number) {
-    // Only process player movement if keyboard input is enabled
-    if (!this.keyboardInputEnabled) {
-         // No need to stop player here, disableKeyboardInput() already handles it
+    // Only process player movement if input is enabled
+    if (!this.playerInputEnabled) {
+         // Ensure player velocity is zero if input just got disabled
+         if(this.player?.body?.velocity.x !== 0 || this.player?.body?.velocity.y !== 0) {
+            this.player.setVelocity(0);
+             // Optionally ensure idle animation is playing
+             const currentAnimKey = this.player.anims.currentAnim?.key;
+             if (currentAnimKey && !currentAnimKey.startsWith('idle_')) {
+                 const facing = currentAnimKey.split('_')[1] || 'down';
+                 this.player.anims.play(`idle_${facing}`, true);
+             }
+         }
          return;
     }
 
     if (!this.player || !(this.player instanceof Phaser.Physics.Arcade.Sprite) || !this.player.body) {
       return;
     }
-    if (!this.cursors && !this.wasdKeys) return; // Do nothing if input is not ready
+    if (!this.cursors && !this.wasdKeys && (this.joystickDirection.x === 0 && this.joystickDirection.y === 0)) return; // Do nothing if no input active
 
     // Reset velocity
     this.player.setVelocity(0);
     let currentAnimKey = this.player.anims.currentAnim?.key;
     let isMoving = false;
+    let moveX = 0;
+    let moveY = 0;
     let facing = currentAnimKey?.replace('walk_', '').replace('idle_', '') || 'down'; // Track direction
 
-    // Combine Cursor and WASD input checks
+    // --- Input Handling ---
+    // Keyboard Input (WASD/Arrows) - Takes priority if joystick isn't actively used or if both used
     const leftPressed = this.cursors?.left.isDown || this.wasdKeys?.A.isDown;
     const rightPressed = this.cursors?.right.isDown || this.wasdKeys?.D.isDown;
     const upPressed = this.cursors?.up.isDown || this.wasdKeys?.W.isDown;
     const downPressed = this.cursors?.down.isDown || this.wasdKeys?.S.isDown;
 
+    if (leftPressed) moveX = -1;
+    else if (rightPressed) moveX = 1;
 
-    // Horizontal movement
-    if (leftPressed) {
-      this.player.setVelocityX(-this.playerSpeed);
-      facing = 'left';
-      isMoving = true;
-    } else if (rightPressed) {
-      this.player.setVelocityX(this.playerSpeed);
-      facing = 'right';
-      isMoving = true;
+    if (upPressed) moveY = -1;
+    else if (downPressed) moveY = 1;
+
+    // Joystick Input - Use if keyboard isn't pressed OR if you prefer joystick priority
+    // Current logic: Keyboard overrides joystick if keys are down
+    if (moveX === 0 && moveY === 0 && (this.joystickDirection.x !== 0 || this.joystickDirection.y !== 0)) {
+        moveX = this.joystickDirection.x;
+        // Note: Joystick y is often screen-based (down is positive), adjust if needed
+        // If joystick y gives standard math angle (up positive), use this.joystickDirection.y directly.
+        // If joystick y gives screen angle (down positive), invert it for velocity:
+        moveY = this.joystickDirection.y; // Assuming nipplejs provides standard math angle (y positive up)
+
+         // Determine facing direction primarily from joystick angle
+         const angleDeg = Phaser.Math.RadToDeg(Math.atan2(moveY, moveX));
+         if (angleDeg > -135 && angleDeg <= -45) facing = 'up';
+         else if (angleDeg > 45 && angleDeg <= 135) facing = 'down';
+         else if (angleDeg > 135 || angleDeg <= -135) facing = 'left';
+         else facing = 'right'; // Between -45 and 45
+
+    } else if (moveX !== 0 || moveY !== 0) {
+         // Determine facing from keyboard input
+         if (moveY < 0) facing = 'up';
+         else if (moveY > 0) facing = 'down';
+         else if (moveX < 0) facing = 'left';
+         else if (moveX > 0) facing = 'right';
     }
 
-    // Vertical movement
-    if (upPressed) {
-      this.player.setVelocityY(-this.playerSpeed);
-      // Only update facing if not moving horizontally
-      if (!isMoving) facing = 'up';
-      isMoving = true;
-    } else if (downPressed) {
-      this.player.setVelocityY(this.playerSpeed);
-       // Only update facing if not moving horizontally
-      if (!isMoving) facing = 'down';
-      isMoving = true;
+
+    // --- Apply Movement ---
+    isMoving = moveX !== 0 || moveY !== 0;
+
+    if (isMoving) {
+        const moveVector = new Phaser.Math.Vector2(moveX, moveY).normalize();
+        this.player.setVelocity(moveVector.x * this.playerSpeed, moveVector.y * this.playerSpeed);
+    } else {
+        this.player.setVelocity(0); // Explicitly stop if no input
     }
 
-     // Normalize and scale the velocity so that player doesn't move faster diagonally
-     const velocity = this.player.body.velocity;
-     if (velocity.x !== 0 || velocity.y !== 0) {
-         velocity.normalize().scale(this.playerSpeed);
-     }
 
-    // Play animations based on movement and facing direction
+    // --- Animation ---
     if (isMoving) {
         const walkAnimKey = `walk_${facing}`;
         if (currentAnimKey !== walkAnimKey) {
             this.player.anims.play(walkAnimKey, true);
         }
     } else {
+        // Ensure facing direction from last movement persists in idle state
         const idleAnimKey = `idle_${facing}`;
          if (currentAnimKey !== idleAnimKey) {
              this.player.anims.play(idleAnimKey, true);
@@ -542,12 +600,14 @@ export default class MainScene extends Phaser.Scene {
       if (this.cooldownTimerEvent) {
           this.cooldownTimerEvent.remove(false);
       }
+       this.joystickDirection = { x: 0, y: 0 }; // Reset joystick state on shutdown
   }
 
   destroy() {
       if (this.cooldownTimerEvent) {
           this.cooldownTimerEvent.remove(false);
       }
+      this.joystickDirection = { x: 0, y: 0 }; // Reset joystick state on destroy
       super.destroy();
   }
 }
