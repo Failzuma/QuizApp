@@ -1,7 +1,8 @@
+
 'use client';
 
 import React, { useEffect, useRef, useState, use } from 'react';
-import Phaser from 'phaser';
+import * as Phaser from 'phaser'; // Import Phaser as a namespace
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,12 +38,13 @@ const mockQuizzes: Record<string, { type: string; question: string; options: str
 
 
 export default function GamePage({ params }: { params: Promise<{ mapId: string }> }) {
-  const resolvedParams = use(params);
+  const resolvedParams = use(params); // Use React.use to resolve the promise
   const [players, setPlayers] = useState(mockPlayers.sort((a, b) => b.score - a.score));
   const [showQuiz, setShowQuiz] = useState(false);
   const [currentQuiz, setCurrentQuiz] = useState<typeof mockQuizzes[string] | null>(null);
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
+  const sceneInstanceRef = useRef<MainScene | null>(null);
 
 
   // Callback function for Phaser scene to trigger quiz
@@ -57,55 +59,71 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     }
   };
 
+  // Function to signal Phaser to re-enable a node
+  const reEnableNode = (nodeId: string) => {
+    sceneInstanceRef.current?.reEnableNode(nodeId);
+  };
+
 
   // Initialize Phaser Game
    useEffect(() => {
         if (!gameContainerRef.current || gameInstanceRef.current) {
-          // If container isn't ready or game already exists, do nothing
           return;
         }
 
+        const mainScene = new MainScene();
+        sceneInstanceRef.current = mainScene; // Store scene instance
+
         const config: Phaser.Types.Core.GameConfig = {
           type: Phaser.AUTO,
-          parent: gameContainerRef.current, // Use the ref here
-          width: '100%', // Let the container div handle width
-          height: 600, // Fixed height, adjust as needed
+          parent: gameContainerRef.current,
+          width: '100%',
+          height: 600,
           physics: {
             default: 'arcade',
             arcade: {
               gravity: { y: 0 },
-              // debug: process.env.NODE_ENV === 'development', // Enable debug outlines in dev
             },
           },
-          scene: [MainScene], // Add your scene(s) here
+          scene: [mainScene], // Use the instance here
           scale: {
-              mode: Phaser.Scale.FIT, // Fit within the parent container
+              mode: Phaser.Scale.FIT,
               autoCenter: Phaser.Scale.CENTER_BOTH,
           },
-          // Pass the callback to the scene via scene config
-          sceneConfig: {
-              key: 'MainScene',
-              data: { onNodeInteract: handleNodeInteraction },
-              active: true // Start the scene immediately
+          // Pass the callback via scene create data
+          callbacks: {
+            postBoot: (game) => {
+              // Access the scene instance after it's fully booted
+              const scene = game.scene.getScene('MainScene') as MainScene;
+              if (scene) {
+                scene.init({ onNodeInteract: handleNodeInteraction });
+                sceneInstanceRef.current = scene; // Ensure ref points to the active scene
+              } else {
+                  console.error("MainScene not found after boot");
+              }
+            }
           }
-
         };
 
         const game = new Phaser.Game(config);
         gameInstanceRef.current = game;
 
 
-        // Cleanup function
         return () => {
           console.log('Destroying Phaser game instance');
           gameInstanceRef.current?.destroy(true);
           gameInstanceRef.current = null;
+          sceneInstanceRef.current = null; // Clear scene ref
         };
-      }, []); // Empty dependency array ensures this runs only once on mount
+      }, []);
 
   const handleAnswerSubmit = (selectedAnswer: string) => {
       console.log('Answer submitted:', selectedAnswer);
-      if (!currentQuiz) return;
+      if (!currentQuiz || !sceneInstanceRef.current) return;
+
+      // Extract nodeId from the current quiz context if needed
+      const currentNodeId = Object.keys(mockQuizzes).find(key => mockQuizzes[key] === currentQuiz);
+
 
       // TODO: Implement actual answer validation and scoring logic
       if (selectedAnswer === currentQuiz.correctAnswer) {
@@ -119,9 +137,23 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
           console.log("Incorrect!");
       }
       setShowQuiz(false); // Hide quiz after answering
+
+      // Re-enable the node in Phaser
+      if(currentNodeId) {
+        reEnableNode(currentNodeId);
+      }
+
       setCurrentQuiz(null); // Reset current quiz
-      // Potentially tell Phaser to re-enable the node if needed
   };
+
+  const closeQuiz = () => {
+      setShowQuiz(false);
+      const currentNodeId = Object.keys(mockQuizzes).find(key => mockQuizzes[key] === currentQuiz);
+      if(currentNodeId) {
+          reEnableNode(currentNodeId); // Re-enable node if quiz is closed without answering
+      }
+      setCurrentQuiz(null);
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -133,11 +165,10 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 relative">
           {/* Game Area */}
           <div className="lg:col-span-3">
-             {/* Container for Phaser Game */}
              <div
                 ref={gameContainerRef}
                 id="phaser-game-container"
-                className="w-full h-[600px] bg-muted border border-muted-foreground overflow-hidden" // Added overflow hidden
+                className="w-full h-[600px] bg-muted border border-muted-foreground overflow-hidden"
              >
                  {/* Phaser canvas will be injected here */}
              </div>
@@ -150,7 +181,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 <CardTitle>Session Leaderboard</CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[550px] pr-4"> {/* Adjusted height to match game */}
+                <ScrollArea className="h-[550px] pr-4">
                   <ul className="space-y-4">
                     {players.map((player, index) => (
                       <li key={player.id} className="flex items-center justify-between">
@@ -178,7 +209,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                          <CardHeader>
                             <div className="flex justify-between items-center">
                                <CardTitle>Quiz Time!</CardTitle>
-                               <Button variant="ghost" size="icon" onClick={() => { setShowQuiz(false); setCurrentQuiz(null); }}>
+                               <Button variant="ghost" size="icon" onClick={closeQuiz}>
                                    <X className="h-5 w-5" />
                                </Button>
                            </div>
@@ -186,7 +217,6 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                         </CardHeader>
                         <CardContent>
                            <p className="mb-4 text-lg font-medium">{currentQuiz.question}</p>
-                            {/* Render different inputs based on quiz type */}
                             {currentQuiz.type === 'multiple-choice' && (
                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                    {currentQuiz.options.map((option, index) => (
@@ -202,13 +232,16 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                                </div>
                            )}
                             {currentQuiz.type === 'short-answer' && (
-                                // TODO: Implement short answer input field and submit button
                                 <div>
-                                    <input type="text" placeholder="Type your answer..." className="w-full p-2 border rounded mb-2" />
-                                    <Button onClick={() => handleAnswerSubmit('user typed answer')}>Submit</Button>
+                                    {/* Consider using react-hook-form for better state management */}
+                                    <input id="short-answer-input" type="text" placeholder="Type your answer..." className="w-full p-2 border rounded mb-2" />
+                                    <Button onClick={() => {
+                                        const inputElement = document.getElementById('short-answer-input') as HTMLInputElement;
+                                        handleAnswerSubmit(inputElement?.value || '');
+                                    }}>Submit</Button>
                                 </div>
                             )}
-                           {/* TODO: Add rendering for other quiz types (Matching, Sequencing, etc.) */}
+                           {/* TODO: Add rendering for other quiz types */}
                         </CardContent>
                     </Card>
                 </div>
