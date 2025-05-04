@@ -1,4 +1,5 @@
 
+
 import * as Phaser from 'phaser';
 import type { JoystickManager, JoystickOutputData } from 'nipplejs'; // Import types for joystick data
 
@@ -33,14 +34,16 @@ export default class MainScene extends Phaser.Scene {
   private initialCameraZoomLevel = 1.5; // Initial zoom level
   private minZoom = 0.5; // Minimum zoom level
   private maxZoom = 3; // Maximum zoom level
-  private zoomIncrement = 0.1; // How much to zoom per step
-  private playerScale = 2.0; // Make player larger <<-- INCREASED SCALE
+  private zoomIncrement = 0.1; // How much to zoom per step (mouse wheel)
+  private pinchZoomFactor = 0.005; // Sensitivity for pinch zoom
+  private playerScale = 2.0; // Make player larger
   private playerInputEnabled = true; // Flag to control player movement input
   private interactionOnCooldown = false; // Flag to manage node interaction cooldown
   private cooldownTimerEvent?: Phaser.Time.TimerEvent; // Timer event for cooldown
   private joystickDirection: { x: number; y: number } = { x: 0, y: 0 }; // Store joystick vector
   private highlightedNodeId: string | null = null; // Track the currently highlighted node
   private nodeCreationData: NodeData[] = []; // Store node data received from React
+  private initialPinchDistance: number | null = null; // For pinch-to-zoom
 
 
   constructor() {
@@ -370,6 +373,7 @@ export default class MainScene extends Phaser.Scene {
      console.log(`[Phaser Scene] Initial camera zoom set to: ${clampedInitialZoom}`);
 
     // --- Zoom Controls ---
+    // Mouse Wheel Zoom
     this.input.on('wheel', (pointer: Phaser.Input.Pointer, gameObjects: Phaser.GameObjects.GameObject[], deltaX: number, deltaY: number, deltaZ: number) => {
         let newZoom;
         if (deltaY > 0) {
@@ -384,6 +388,57 @@ export default class MainScene extends Phaser.Scene {
         this.cameras.main.zoomTo(newZoom, 100); // Smooth zoom over 100ms
          // console.log(`Zoom changed to: ${newZoom}`);
     });
+
+    // Pinch-to-Zoom
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        if (this.input.pointer1.isDown && this.input.pointer2.isDown) {
+            this.initialPinchDistance = Phaser.Math.Distance.Between(
+                this.input.pointer1.x, this.input.pointer1.y,
+                this.input.pointer2.x, this.input.pointer2.y
+            );
+            // console.log("[Pinch] Start detected, initial distance:", this.initialPinchDistance);
+        } else {
+             this.initialPinchDistance = null; // Reset if only one pointer down initially
+        }
+    });
+
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+         // Only process pinch zoom if two pointers are down and we have an initial distance
+        if (this.input.pointer1.isDown && this.input.pointer2.isDown && this.initialPinchDistance !== null) {
+            const currentDistance = Phaser.Math.Distance.Between(
+                this.input.pointer1.x, this.input.pointer1.y,
+                this.input.pointer2.x, this.input.pointer2.y
+            );
+            const deltaDistance = currentDistance - this.initialPinchDistance;
+
+             // Calculate zoom change based on the distance delta and sensitivity
+            let zoomChange = deltaDistance * this.pinchZoomFactor;
+            let newZoom = this.cameras.main.zoom + zoomChange;
+
+             // Clamp the new zoom level
+            newZoom = Phaser.Math.Clamp(newZoom, this.minZoom, this.maxZoom);
+
+            // Apply the zoom gradually for smoothness (optional, can set directly)
+            // this.cameras.main.zoomTo(newZoom, 50); // Zoom over 50ms
+            this.cameras.main.setZoom(newZoom); // Set directly for immediate feedback
+
+             // Update the initial distance for the next move event to make zoom continuous
+            this.initialPinchDistance = currentDistance;
+            // console.log("[Pinch] Move detected. New distance:", currentDistance, "New Zoom:", newZoom);
+        }
+    });
+
+    // Reset pinch distance when pointers are released
+     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+          // If either pointer is lifted, stop tracking pinch distance
+          if (!this.input.pointer1.isDown || !this.input.pointer2.isDown) {
+               if (this.initialPinchDistance !== null) {
+                    // console.log("[Pinch] End detected.");
+                    this.initialPinchDistance = null;
+               }
+          }
+     });
+
 
 
      // Check if the callbacks were set correctly
@@ -805,6 +860,10 @@ export default class MainScene extends Phaser.Scene {
        this.joystickDirection = { x: 0, y: 0 }; // Reset joystick state on shutdown
        this.clearNodeHighlight(this.highlightedNodeId); // Clear any active highlight
        // Remove event listeners? Maybe not needed if scene is destroyed properly.
+       this.input.off('pointerdown');
+       this.input.off('pointermove');
+       this.input.off('pointerup');
+       this.input.off('wheel');
   }
 
   destroy() {
@@ -818,3 +877,4 @@ export default class MainScene extends Phaser.Scene {
       super.destroy();
   }
 }
+

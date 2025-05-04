@@ -13,7 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input'; // Import Input component
-import { X, Trophy, Target, CheckSquare, Eye, EyeOff } from 'lucide-react'; // Added Trophy, Target, CheckSquare, Eye, EyeOff icons
+import { X, Trophy, Target, CheckSquare, Eye, EyeOff, PanelTopClose, PanelTopOpen } from 'lucide-react'; // Added UI toggle icons
 import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
 import type { NodeInteractionCallback, NodesCountCallback } from '@/game/scenes/MainScene'; // Import the types only
 import { useToast } from "@/hooks/use-toast"; // Import useToast
@@ -99,6 +99,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   const [shortAnswerValue, setShortAnswerValue] = useState(''); // State for short answer input
   const [remainingNodesCount, setRemainingNodesCount] = useState<number | null>(null); // State for remaining nodes
   const [showNodeCount, setShowNodeCount] = useState(true); // State to control node count visibility
+  const [isUIVisible, setIsUIVisible] = useState(true); // State to control overall UI visibility
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const sceneInstanceRef = useRef<MainSceneType | null>(null); // Use the imported type
@@ -290,7 +291,9 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                     // Prevent default browser behavior (like scrolling with spacebar)
                     // ONLY if needed and handled carefully. Often not required.
                     // capture: [ Phaser.Input.Keyboard.KeyCodes.SPACE ]
-                }
+                },
+                 // Enable touch input for mobile gestures
+                touch: true,
               },
               // Use postBoot to safely access the scene instance after Phaser setup
               callbacks: {
@@ -372,33 +375,46 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         let manager: nipplejs.JoystickManager | null = null;
 
         const initJoystick = async () => {
-            if (isMobile && joystickZoneRef.current && !joystickManagerRef.current) {
+            // Only init joystick if on mobile and UI is generally visible (otherwise zone might be hidden)
+            if (isMobile && joystickZoneRef.current && !joystickManagerRef.current && isUIVisible) {
                 console.log("[Joystick] Initializing joystick...");
                 // Dynamically import nipplejs
                 const nipplejs = (await import('nipplejs')).default;
 
                 manager = nipplejs.create({
                     zone: joystickZoneRef.current, // The DOM element for the joystick area
-                    mode: 'static', // Joystick stays in one place
-                    position: { left: '15%', bottom: '20%' }, // Position on screen
+                    mode: 'dynamic', // Allows joystick to appear where finger touches
+                    position: { left: '50%', top: '50%' }, // Centered in the zone initially
                     color: 'rgba(255, 255, 255, 0.5)', // Semi-transparent white
                     size: 100, // Size of the joystick base
                     threshold: 0.1, // Minimum distance threshold to trigger move
                     fadeTime: 250, // Fade time for the joystick appearance
+                    multitouch: false, // Disable multitouch for simplicity with zoom
+                    restJoystick: true, // Return to center when released
+                    restOpacity: 0.5, // Opacity when idle
+                    // lockX: false, // Allow diagonal movement
+                    // lockY: false,
+                    shape: 'circle', // Or 'square'
                 });
 
                 joystickManagerRef.current = manager;
+
+                manager.on('start', (evt, data) => {
+                    console.log("[Joystick] Start");
+                    // Optional: visually indicate joystick is active
+                });
 
                 manager.on('move', (evt, data) => {
                     // Pass joystick data to Phaser scene
                     if (sceneInstanceRef.current?.joystickInput) {
                          sceneInstanceRef.current.joystickInput(data);
                      } else {
-                         console.warn("[Joystick] Scene instance or joystickInput method not available.");
+                         // console.warn("[Joystick] Scene instance or joystickInput method not available during move."); // Can be noisy
                      }
                 });
 
                 manager.on('end', () => {
+                     console.log("[Joystick End]");
                      // Signal Phaser scene that joystick is released
                      if (sceneInstanceRef.current?.joystickInput) {
                         sceneInstanceRef.current.joystickInput({
@@ -408,11 +424,17 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                             direction: undefined, // Indicate stop
                         });
                      } else {
-                         console.warn("[Joystick] Scene instance or joystickInput method not available.");
+                         // console.warn("[Joystick] Scene instance or joystickInput method not available during end.");
                      }
+                     // Optional: visually indicate joystick is inactive
                 });
 
                  console.log("[Joystick] Joystick initialized.");
+            } else if (!isUIVisible && joystickManagerRef.current) {
+                 // Destroy joystick if UI becomes hidden
+                 console.log("[Joystick] UI hidden, destroying joystick.");
+                 joystickManagerRef.current.destroy();
+                 joystickManagerRef.current = null;
             }
         };
 
@@ -424,12 +446,19 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
         return () => {
             if (joystickManagerRef.current) {
-                console.log("[Joystick] Destroying joystick...");
-                joystickManagerRef.current.destroy();
-                joystickManagerRef.current = null;
+                console.log("[Joystick] Destroying joystick (cleanup)...");
+                try {
+                    joystickManagerRef.current.destroy();
+                } catch (error) {
+                     console.warn("[Joystick] Error destroying joystick:", error);
+                } finally {
+                     joystickManagerRef.current = null;
+                }
+
             }
         };
-     }, [isMobile]); // Re-run if isMobile changes (though unlikely during component lifetime)
+     // Re-run if isMobile changes or UI visibility changes
+     }, [isMobile, isUIVisible]);
 
     const submitShortAnswer = () => {
         handleAnswerSubmit(shortAnswerValue);
@@ -538,10 +567,15 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     setShowNodeCount(prevState => !prevState);
   }
 
+  const toggleUIVisibility = () => {
+      setIsUIVisible(prevState => !prevState);
+  }
+
   return (
     // Make the main container flex column and take full screen height minus header (approx)
     <div className="flex flex-col h-screen overflow-hidden">
-      <Header />
+      {/* Conditionally render Header based on device type */}
+      {!isMobile && <Header />}
       {/* Removed container/padding from main to allow game to fill space */}
       <main className="flex-grow relative"> {/* Added relative positioning */}
         {/* Game Area - Now takes up the majority of the space */}
@@ -555,88 +589,105 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         </div>
 
         {/* Mobile Joystick Area - Positioned over the game area */}
-         {isMobile && (
+         {isMobile && isUIVisible && ( // Only show if mobile AND UI is visible
             <div
               ref={joystickZoneRef}
               id="joystick-zone"
               className="absolute bottom-0 left-0 w-1/2 h-1/2 z-30" // Position bottom-left, adjust size as needed
               style={{ pointerEvents: showQuiz ? 'none' : 'auto' }} // Disable joystick when quiz is shown
             >
-              {/* Joystick will be created here by nipplejs */}
+              {/* Joystick will be created here by nipplejs dynamically */}
             </div>
          )}
 
-         {/* Top-Left HUD Elements Container */}
-         <div className="absolute top-4 left-4 z-10 flex flex-col gap-4"> {/* Use flex-col and gap */}
-
-            {/* Map Details Overlay */}
-            <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
-              <h1 className="text-lg font-bold text-primary">{currentMapTitle}</h1>
-              <p className="text-xs text-muted-foreground">Room Code: <span className="font-mono bg-muted px-1 py-0.5 rounded">XYZ123</span></p>
-            </div>
-
-            {/* Node Count and Toggle Button Overlay */}
-            <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow flex flex-col items-start gap-2"> {/* items-start to align content left */}
-                {/* Node Count Display */}
-                {showNodeCount && (
-                    <div className="flex items-center gap-2">
-                        <CheckSquare className="h-5 w-5 text-primary" />
-                        <span className="text-sm font-medium">Nodes Remaining:</span>
-                        <span className="font-bold text-lg text-primary">
-                            {remainingNodesCount !== null ? remainingNodesCount : '--'}
-                        </span>
-                    </div>
-                )}
-                {/* Show/Hide Node Count Button */}
-                <Button
-                    variant="ghost"
-                    size="sm" // Make button smaller
-                    onClick={toggleNodeCountVisibility}
-                    className="w-full text-primary hover:bg-background/90 flex items-center justify-center gap-1" // Removed mt-1 as gap handles spacing
-                    title={showNodeCount ? "Hide Node Count" : "Show Node Count"}
-                    >
-                    {showNodeCount ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    <span className="text-xs">{showNodeCount ? "Hide" : "Show"} Count</span>
-                </Button>
-            </div>
-
-         </div>
-
-
-        {/* Sidebar - Leaderboard as HUD Overlay */}
-        <div className="absolute top-4 right-4 z-10 w-64"> {/* Adjust width as needed */}
-            <Card className="bg-background/70 backdrop-blur-sm shadow-lg border-primary/50"> {/* Semi-transparent HUD */}
-            <CardHeader className="p-3"> {/* Reduced padding */}
-                <CardTitle className="text-base flex items-center gap-2"> {/* Smaller title */}
-                   <Trophy className="h-4 w-4 text-primary" /> Leaderboard
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0"> {/* Remove padding to let ScrollArea handle it */}
-                {/* Adjust height - make it dynamic or fixed height */}
-                <ScrollArea className="h-60 px-3 pb-3"> {/* Fixed height example, adjust as needed */}
-                <ul className="space-y-2">
-                    {players.map((player, index) => (
-                    <li key={player.id} className="flex items-center justify-between p-1.5 rounded text-xs hover:bg-secondary/80 transition-colors"> {/* Smaller text, padding */}
-                        <div className="flex items-center gap-2">
-                        <span className="font-semibold w-5 text-center text-muted-foreground">{index + 1}</span>
-                        <Avatar className="h-6 w-6"> {/* Smaller avatar */}
-                            <AvatarImage src={player.avatar} alt={player.name} data-ai-hint="person avatar"/>
-                            <AvatarFallback>{player.name.substring(0, 1)}</AvatarFallback>
-                        </Avatar>
-                        <span className={`flex-1 truncate ${player.name === 'You' ? 'font-bold text-primary' : ''}`}>{player.name}</span>
-                        </div>
-                        <span className="font-semibold text-primary">{player.score} pts</span>
-                    </li>
-                    ))}
-                </ul>
-                </ScrollArea>
-            </CardContent>
-            </Card>
+        {/* Top Control Bar (Contains UI Toggle) - Positioned Above Other UI */}
+        <div className="absolute top-4 right-4 z-20"> {/* Ensure it's above other overlays */}
+           <Button
+               variant="ghost"
+               size="icon"
+               onClick={toggleUIVisibility}
+               className="bg-background/70 backdrop-blur-sm text-primary hover:bg-background/90 shadow"
+               title={isUIVisible ? "Hide UI" : "Show UI"}
+            >
+               {isUIVisible ? <PanelTopClose className="h-5 w-5" /> : <PanelTopOpen className="h-5 w-5" />}
+           </Button>
         </div>
+
+         {/* Top-Left HUD Elements Container - Visibility controlled by isUIVisible */}
+         {isUIVisible && (
+            <div className="absolute top-4 left-4 z-10 flex flex-col gap-4"> {/* Use flex-col and gap */}
+
+                {/* Map Details Overlay */}
+                <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
+                <h1 className="text-lg font-bold text-primary">{currentMapTitle}</h1>
+                <p className="text-xs text-muted-foreground">Room Code: <span className="font-mono bg-muted px-1 py-0.5 rounded">XYZ123</span></p>
+                </div>
+
+                {/* Node Count and Toggle Button Overlay */}
+                <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow flex flex-col items-start gap-2"> {/* items-start to align content left */}
+                    {/* Node Count Display */}
+                    {showNodeCount && (
+                        <div className="flex items-center gap-2">
+                            <CheckSquare className="h-5 w-5 text-primary" />
+                            <span className="text-sm font-medium">Nodes Remaining:</span>
+                            <span className="font-bold text-lg text-primary">
+                                {remainingNodesCount !== null ? remainingNodesCount : '--'}
+                            </span>
+                        </div>
+                    )}
+                    {/* Show/Hide Node Count Button */}
+                    <Button
+                        variant="ghost"
+                        size="sm" // Make button smaller
+                        onClick={toggleNodeCountVisibility}
+                        className="w-full text-primary hover:bg-background/90 flex items-center justify-center gap-1" // Removed mt-1 as gap handles spacing
+                        title={showNodeCount ? "Hide Node Count" : "Show Node Count"}
+                        >
+                        {showNodeCount ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        <span className="text-xs">{showNodeCount ? "Hide" : "Show"} Count</span>
+                    </Button>
+                </div>
+
+            </div>
+         )}
+
+
+        {/* Sidebar - Leaderboard as HUD Overlay - Visibility controlled by isUIVisible */}
+        {isUIVisible && (
+            <div className="absolute top-16 right-4 z-10 w-64"> {/* Adjust top offset due to UI toggle button */}
+                <Card className="bg-background/70 backdrop-blur-sm shadow-lg border-primary/50"> {/* Semi-transparent HUD */}
+                <CardHeader className="p-3"> {/* Reduced padding */}
+                    <CardTitle className="text-base flex items-center gap-2"> {/* Smaller title */}
+                    <Trophy className="h-4 w-4 text-primary" /> Leaderboard
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0"> {/* Remove padding to let ScrollArea handle it */}
+                    {/* Adjust height - make it dynamic or fixed height */}
+                    <ScrollArea className="h-60 px-3 pb-3"> {/* Fixed height example, adjust as needed */}
+                    <ul className="space-y-2">
+                        {players.map((player, index) => (
+                        <li key={player.id} className="flex items-center justify-between p-1.5 rounded text-xs hover:bg-secondary/80 transition-colors"> {/* Smaller text, padding */}
+                            <div className="flex items-center gap-2">
+                            <span className="font-semibold w-5 text-center text-muted-foreground">{index + 1}</span>
+                            <Avatar className="h-6 w-6"> {/* Smaller avatar */}
+                                <AvatarImage src={player.avatar} alt={player.name} data-ai-hint="person avatar"/>
+                                <AvatarFallback>{player.name.substring(0, 1)}</AvatarFallback>
+                            </Avatar>
+                            <span className={`flex-1 truncate ${player.name === 'You' ? 'font-bold text-primary' : ''}`}>{player.name}</span>
+                            </div>
+                            <span className="font-semibold text-primary">{player.score} pts</span>
+                        </li>
+                        ))}
+                    </ul>
+                    </ScrollArea>
+                </CardContent>
+                </Card>
+            </div>
+        )}
 
         {/* Quiz Modal/Overlay */}
         {showQuiz && currentQuizData?.question && (
-            <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-20 p-4"> {/* Increased z-index */}
+            <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50 p-4"> {/* Increased z-index above UI toggle */}
                 <Card className="w-full max-w-lg shadow-xl border-primary border-2"> {/* Added primary border */}
                     <CardHeader>
                         <div className="flex justify-between items-center">
@@ -699,3 +750,4 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     </div>
   );
 }
+
