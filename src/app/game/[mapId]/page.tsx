@@ -600,13 +600,16 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
           {/* Phaser canvas will be injected here */}
         </div>
 
-        {/* Mobile Joystick Area - Positioned over the game area, visible only when UI is shown or quiz is not active */}
+        {/* Mobile Joystick Area - Positioned over the game area */}
          {isMobile && (
             <div
               ref={joystickZoneRef}
               id="joystick-zone"
-              className={`absolute bottom-0 left-0 w-1/2 h-1/2 z-30 ${isUIVisible ? 'opacity-100' : 'opacity-0'}`} // Fade out if UI is hidden
-              style={{ pointerEvents: isUIVisible && !showQuiz ? 'auto' : 'none' }} // Only interactive if UI is visible AND no quiz shown
+              // Adjust positioning and size as needed. z-30 places it above game, below UI toggles/quiz.
+              // Opacity allows it to be visually hidden if desired, but pointerEvents control interaction.
+              className="absolute bottom-0 left-0 w-1/2 h-1/2 z-30 opacity-75"
+              // Pointer events are enabled only when a quiz is NOT active. Independent of isUIVisible.
+              style={{ pointerEvents: !showQuiz ? 'auto' : 'none' }}
             >
               {/* Joystick will be created here by nipplejs dynamically */}
             </div>
