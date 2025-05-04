@@ -1,5 +1,7 @@
+
 'use client'; // Add 'use client' directive
 
+import * as React from 'react';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,17 +9,20 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users } from 'lucide-react';
+import { AddQuizModal, QuizFormData } from '@/components/admin/AddQuizModal'; // Import the modal component
 
 // Mock Data - Replace with actual data fetching later
 const mockMaps = [
   { id: 'map1', title: 'English for IT - Vocabulary Basics', nodes: 15, quizzes: 10 },
   { id: 'map2', title: 'Basic English Grammar - Tenses', nodes: 12, quizzes: 8 },
+  { id: 'map3', title: 'Networking Concepts Map', nodes: 20, quizzes: 15 }, // Added map3 for quiz example
 ];
 
-const mockQuizzes = [
-    { id: 'q1', mapId: 'map1', nodeId: 'node3', question: 'What does CPU stand for?', type: 'Short Answer'},
-    { id: 'q2', mapId: 'map1', nodeId: 'node7', question: 'Match the term to its definition.', type: 'Matching'},
-    { id: 'q3', mapId: 'map2', nodeId: 'node2', question: 'Choose the correct past tense verb.', type: 'Multiple Choice'},
+// Use React state for quizzes so it can be updated
+const initialMockQuizzes = [
+    { id: 'q1', mapId: 'map1', nodeId: 'node3', question: 'What does CPU stand for?', type: 'Short Answer', options: [], correctAnswer: 'Central Processing Unit' },
+    { id: 'q2', mapId: 'map1', nodeId: 'node7', question: 'Match the term to its definition.', type: 'Matching', options: ['Term A:Def 1', 'Term B:Def 2'], correctAnswer: 'N/A'}, // Matching needs specific handling
+    { id: 'q3', mapId: 'map2', nodeId: 'node2', question: 'Choose the correct past tense verb.', type: 'Multiple Choice', options: ['go', 'went', 'gone', 'goes'], correctAnswer: 'went' },
 ];
 
 const mockSessionResults = [
@@ -26,10 +31,12 @@ const mockSessionResults = [
 ];
 
 export default function AdminPage() {
+  const [isAddQuizModalOpen, setIsAddQuizModalOpen] = React.useState(false);
+  const [quizzes, setQuizzes] = React.useState(initialMockQuizzes);
+
   // TODO: Add role-based access control check here (consider moving logic if this becomes complex server-side check)
 
   const handleExportResults = () => {
-      // This function uses browser APIs, so it's suitable for a Client Component
       console.log("Exporting session results...");
       const headers = "Session ID,Map Title,Date,Participants,Average Score\n";
       const csvContent = mockSessionResults.map(s =>
@@ -37,7 +44,7 @@ export default function AdminPage() {
       ).join("\n");
       const blob = new Blob([headers + csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement("a");
-      if (link.download !== undefined) { // feature detection
+      if (link.download !== undefined) {
           const url = URL.createObjectURL(blob);
           link.setAttribute("href", url);
           link.setAttribute("download", "session_results.csv");
@@ -45,11 +52,25 @@ export default function AdminPage() {
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
-          URL.revokeObjectURL(url); // Clean up object URL
+          URL.revokeObjectURL(url);
       } else {
-        // Fallback or error message if download attribute is not supported
         alert("CSV export is not supported in this browser.");
       }
+  };
+
+  const handleAddQuiz = (data: QuizFormData) => {
+    console.log('New Quiz Data:', data);
+    const newQuiz = {
+      id: `q${quizzes.length + 1}`, // Simple ID generation, replace with real ID
+      mapId: data.mapId,
+      nodeId: data.nodeId,
+      question: data.question,
+      type: data.type,
+      options: data.options || [],
+      correctAnswer: data.correctAnswer,
+    };
+    setQuizzes(prevQuizzes => [...prevQuizzes, newQuiz]);
+    setIsAddQuizModalOpen(false); // Close modal on successful submission
   };
 
 
@@ -119,7 +140,7 @@ export default function AdminPage() {
                 <CardHeader>
                     <div className="flex justify-between items-center">
                        <CardTitle>Manage Quizzes</CardTitle>
-                       <Button size="sm">
+                       <Button size="sm" onClick={() => setIsAddQuizModalOpen(true)}>
                            <PlusCircle className="mr-2 h-4 w-4" /> Add New Quiz
                         </Button>
                     </div>
@@ -137,7 +158,7 @@ export default function AdminPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {mockQuizzes.map((quiz) => (
+                        {quizzes.map((quiz) => (
                         <TableRow key={quiz.id}>
                             <TableCell className="font-medium max-w-xs truncate">{quiz.question}</TableCell>
                             <TableCell>{quiz.type}</TableCell>
@@ -165,7 +186,6 @@ export default function AdminPage() {
               <CardHeader>
                  <div className="flex justify-between items-center">
                     <CardTitle>View Session Results</CardTitle>
-                    {/* Button onClick is now allowed because this is a Client Component */}
                     <Button size="sm" variant="outline" onClick={handleExportResults}>
                         <Download className="mr-2 h-4 w-4" /> Export Results (CSV)
                     </Button>
@@ -203,6 +223,15 @@ export default function AdminPage() {
         </Tabs>
       </main>
       <Footer />
+
+       {/* Add Quiz Modal */}
+       <AddQuizModal
+          isOpen={isAddQuizModalOpen}
+          onClose={() => setIsAddQuizModalOpen(false)}
+          onSubmit={handleAddQuiz}
+          availableMaps={mockMaps}
+       />
     </div>
   );
 }
+
