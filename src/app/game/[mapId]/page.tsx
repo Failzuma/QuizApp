@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useEffect, useRef, useState, use, useMemo, useCallback } from 'react';
@@ -8,11 +9,10 @@ import { Header } from '@/components/Header';
 // Footer removed to maximize game area
 // import { Footer } from '@/components/Footer';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'; // Added CardDescription
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input'; // Import Input component
-import { X, Trophy, Target, CheckSquare, Eye, EyeOff, PanelTopClose, PanelTopOpen, ZoomIn, ZoomOut } from 'lucide-react'; // Added UI toggle, zoom icons
+import { X, Trophy, CheckSquare, Eye, EyeOff, PanelTopClose, PanelTopOpen, ZoomIn, ZoomOut, Target } from 'lucide-react'; // Added UI toggle, zoom icons, Target
 import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
 import type { NodeInteractionCallback, NodesCountCallback } from '@/game/scenes/MainScene'; // Import the types only
 import { useToast } from "@/hooks/use-toast"; // Import useToast
@@ -364,12 +364,12 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             }
         }
 
-        // Check if navigator is defined (runs only on client-side)
-        if (typeof navigator !== 'undefined') {
+        // Check if window is defined (runs only on client-side)
+        if (typeof window !== 'undefined') {
            console.log("[Phaser Init] Running on client, calling initPhaser.");
            initPhaser();
         } else {
-            console.log("[Phaser Init] Running on server or navigator undefined, skipping initPhaser.");
+            console.log("[Phaser Init] Running on server or window undefined, skipping initPhaser.");
         }
 
 
@@ -411,6 +411,12 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         const initJoystick = async () => {
             // Check element exists, is in DOM, and not already initialized
             const zoneElement = joystickZoneRef.current;
+            // Ensure it runs only on client-side where document is defined
+             if (typeof document === 'undefined') {
+                console.log("[Joystick] Skipping initialization: document is not defined (server-side).");
+                return;
+             }
+
             if (isMobile && zoneElement && document.body.contains(zoneElement) && !joystickManagerRef.current) {
                 console.log("[Joystick] Initializing joystick...");
                 // Dynamically import nipplejs
@@ -459,6 +465,10 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 } catch (error) {
                     console.error("[Joystick] Error creating joystick instance:", error);
                     // Handle error, maybe display a message or fallback control
+                    if (error instanceof Error && error.message.includes('parentElement')) {
+                        console.error("[Joystick] Error likely due to zoneElement not being fully ready in the DOM. Retrying might help.");
+                        // Consider adding a small delay and retry logic here if this error persists
+                    }
                 }
 
             } else if (!isMobile && joystickManagerRef.current) {
@@ -467,16 +477,16 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                  joystickManagerRef.current.destroy();
                  joystickManagerRef.current = null;
             } else if (isMobile && !zoneElement) {
-                console.warn("[Joystick] Cannot initialize: zone element not found in the DOM yet.");
+                console.warn("[Joystick] Cannot initialize: zone element ref is null.");
             } else if (isMobile && zoneElement && !document.body.contains(zoneElement)) {
-                 console.warn("[Joystick] Cannot initialize: zone element found but not attached to the DOM.");
+                 console.warn("[Joystick] Cannot initialize: zone element found but not attached to the DOM yet.");
             }
         };
 
         // Only init if we are on the client and element is potentially ready
         if (typeof window !== 'undefined') {
-            // Delay slightly to ensure DOM elements are mounted
-            const timeoutId = setTimeout(initJoystick, 50);
+            // Delay slightly to ensure DOM elements are mounted and layout is stable
+            const timeoutId = setTimeout(initJoystick, 100); // Increased delay slightly
              return () => clearTimeout(timeoutId); // Clear timeout if unmounting before execution
         }
 
@@ -495,6 +505,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             }
         };
      // Re-run only if isMobile changes, also check if zone ref changes (though less likely)
+     // Added dependency on joystickZoneRef.current to re-run if the ref itself changes.
      }, [isMobile, joystickZoneRef.current]);
 
     const submitShortAnswer = () => {
@@ -659,10 +670,10 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
               // but keep it visible.
               className="absolute bottom-0 left-0 w-1/2 h-1/2 z-30 opacity-75"
               // Pointer events logic:
-              // - Enable if mobile AND UI is visible AND quiz is NOT showing
-              // - Enable if mobile AND UI is NOT visible AND quiz is NOT showing (joystick still works when UI is hidden)
-              // - Disable if quiz IS showing
-              style={{ pointerEvents: !showQuiz ? 'auto' : 'none' }}
+              // Allow pointer events if on mobile AND quiz is NOT showing.
+              // This ensures the joystick works whether the UI overlay is visible or not,
+              // but gets disabled when the quiz modal pops up.
+              style={{ pointerEvents: isMobile && !showQuiz ? 'auto' : 'none' }}
             >
               {/* Joystick will be created here by nipplejs dynamically */}
             </div>
