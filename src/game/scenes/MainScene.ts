@@ -391,20 +391,22 @@ export default class MainScene extends Phaser.Scene {
 
     // Pinch-to-Zoom
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        if (this.input.pointer1.isDown && this.input.pointer2.isDown) {
+        // Check if pointer1 and pointer2 exist and are down
+        if (this.input.pointer1?.isDown && this.input.pointer2?.isDown) {
             this.initialPinchDistance = Phaser.Math.Distance.Between(
                 this.input.pointer1.x, this.input.pointer1.y,
                 this.input.pointer2.x, this.input.pointer2.y
             );
             // console.log("[Pinch] Start detected, initial distance:", this.initialPinchDistance);
         } else {
-             this.initialPinchDistance = null; // Reset if only one pointer down initially
+             this.initialPinchDistance = null; // Reset if only one pointer down initially or pointers are undefined
         }
     });
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
          // Only process pinch zoom if two pointers are down and we have an initial distance
-        if (this.input.pointer1.isDown && this.input.pointer2.isDown && this.initialPinchDistance !== null) {
+        // Ensure pointer1 and pointer2 exist
+        if (this.input.pointer1?.isDown && this.input.pointer2?.isDown && this.initialPinchDistance !== null) {
             const currentDistance = Phaser.Math.Distance.Between(
                 this.input.pointer1.x, this.input.pointer1.y,
                 this.input.pointer2.x, this.input.pointer2.y
@@ -430,8 +432,8 @@ export default class MainScene extends Phaser.Scene {
 
     // Reset pinch distance when pointers are released
      this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-          // If either pointer is lifted, stop tracking pinch distance
-          if (!this.input.pointer1.isDown || !this.input.pointer2.isDown) {
+          // Use input.pointerTotal to check active pointers reliably
+          if (this.input.pointerTotal < 2) {
                if (this.initialPinchDistance !== null) {
                     // console.log("[Pinch] End detected.");
                     this.initialPinchDistance = null;
