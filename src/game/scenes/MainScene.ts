@@ -8,9 +8,16 @@ export type NodeInteractionCallback = (nodeId: string) => void;
 export type NodesCountCallback = (count: number) => void;
 
 
-// Define the type for initialization data
+// Define the type for initialization data passed from React
 export interface SceneInitData {
   mapId: string;
+}
+
+// Define the structure for node data passed from React
+export interface NodeData {
+    nodeId: string;
+    x?: number; // Optional initial position X
+    y?: number; // Optional initial position Y
 }
 
 export default class MainScene extends Phaser.Scene {
@@ -33,18 +40,25 @@ export default class MainScene extends Phaser.Scene {
   private cooldownTimerEvent?: Phaser.Time.TimerEvent; // Timer event for cooldown
   private joystickDirection: { x: number; y: number } = { x: 0, y: 0 }; // Store joystick vector
   private highlightedNodeId: string | null = null; // Track the currently highlighted node
+  private nodeCreationData: NodeData[] = []; // Store node data received from React
 
 
   constructor() {
     super({ key: 'MainScene' });
   }
 
-  // Method to receive initialization data and the callbacks
-  initScene(data: SceneInitData, interactCallback: NodeInteractionCallback, countCallback: NodesCountCallback) {
+  // Updated method to receive initialization data, callbacks, and node data
+  initScene(
+      data: SceneInitData,
+      interactCallback: NodeInteractionCallback,
+      countCallback: NodesCountCallback,
+      nodesToCreate: NodeData[] // Receive node data here
+   ) {
     this.mapId = data.mapId;
     this.onNodeInteract = interactCallback;
     this.onNodesCountUpdate = countCallback; // Store the count callback
-    console.log(`[Phaser Scene] MainScene initialized for map: ${this.mapId} with interact and count callbacks.`);
+    this.nodeCreationData = nodesToCreate; // Store node data for use in create()
+    console.log(`[Phaser Scene] MainScene initialized for map: ${this.mapId} with ${nodesToCreate.length} nodes to create.`);
 
     // Safety check for interaction callback
     if (!this.onNodeInteract) {
@@ -283,38 +297,32 @@ export default class MainScene extends Phaser.Scene {
       console.error("[Phaser Scene] Node texture 'node' not loaded or available at create time.");
       // Don't stop execution, but nodes won't appear
     } else {
-        console.log("[Phaser Scene] Creating nodes...");
-        // Example node placement - adjust based on your map designs
-        const node1X = this.physics.world.bounds.width * 0.3;
-        const node1Y = this.physics.world.bounds.height * 0.4;
-        const node2X = this.physics.world.bounds.width * 0.7;
-        const node2Y = this.physics.world.bounds.height * 0.6;
-
-        const node1 = this.nodes.create(node1X, node1Y, 'node').setData('nodeId', 'node_quiz1');
-        const node2 = this.nodes.create(node2X, node2Y, 'node').setData('nodeId', 'node_quiz2');
-
-        // Scale nodes visually
+        console.log("[Phaser Scene] Creating nodes based on nodeCreationData...");
         const nodeScale = 2; // Make nodes appear larger
-        this.nodes.children.iterate(child => {
-            const node = child as Phaser.Physics.Arcade.Sprite;
-            node.setScale(nodeScale);
-            // Refresh body AFTER scaling to ensure physics body matches visual size
-            // Note: Body size calculation might need adjustment if origin changes or for complex shapes
-            const body = node.body as Phaser.Physics.Arcade.StaticBody;
-            // Resetting body size based on scaled dimensions
-            // body.setSize(node.width * nodeScale, node.height * nodeScale);
-            // Refreshing might be sufficient if scale affects display size correctly
-             node.refreshBody();
-            return true;
+
+        // Use the data passed from React via initScene
+        this.nodeCreationData.forEach((nodeInfo, index) => {
+             // Determine position: use provided coords or distribute if missing
+             // Simple distribution example (replace with actual layout logic)
+             const posX = nodeInfo.x ?? this.physics.world.bounds.width * (0.2 + (index * 0.15) % 0.6);
+             const posY = nodeInfo.y ?? this.physics.world.bounds.height * (0.3 + Math.floor(index / 4) * 0.2);
+
+             console.log(`[Phaser Scene] Creating node ${nodeInfo.nodeId} at (${posX.toFixed(0)}, ${posY.toFixed(0)})`);
+             const newNode = this.nodes?.create(posX, posY, 'node')
+                                .setData('nodeId', nodeInfo.nodeId)
+                                .setScale(nodeScale)
+                                .refreshBody(); // Refresh body after scaling
+
+             if (!newNode) {
+                 console.error(`[Phaser Scene] Failed to create node ${nodeInfo.nodeId}`);
+             }
         });
 
         this.createNodeAnimations();
         // Play animation on all active nodes initially
         this.nodes.children.iterate(child => {
             const node = child as Phaser.Physics.Arcade.Sprite;
-           // if (!this.disabledNodes.has(node.getData('nodeId'))) { // No longer needed
-               node.anims.play('node_active', true);
-           // }
+            node.anims.play('node_active', true);
             return true;
         });
         // Initial node count update
@@ -649,6 +657,43 @@ export default class MainScene extends Phaser.Scene {
         this.onNodesCountUpdate(count);
     }
 
+    // --- PUBLIC METHOD TO SET UP NODES ---
+    // This should be called by React (potentially in postBoot) after fetching node data
+    public setupNodes(nodesData: NodeData[]) {
+        console.log(`[Phaser Scene] setupNodes called with ${nodesData.length} nodes.`);
+        if (!this.nodes) {
+            console.error("[Phaser Scene] Nodes group not initialized in setupNodes.");
+            return;
+        }
+        if (!this.textures.exists('node')) {
+          console.error("[Phaser Scene] Node texture 'node' not loaded before setupNodes.");
+          return;
+        }
+
+        // Clear existing nodes if setup is called again (e.g., map change)
+        this.nodes.clear(true, true); // Destroy children and remove from scene
+
+        const nodeScale = 2;
+
+        nodesData.forEach((nodeInfo, index) => {
+            const posX = nodeInfo.x ?? this.physics.world.bounds.width * (0.2 + (index * 0.15) % 0.6);
+            const posY = nodeInfo.y ?? this.physics.world.bounds.height * (0.3 + Math.floor(index / 4) * 0.2);
+
+            const newNode = this.nodes?.create(posX, posY, 'node')
+                              .setData('nodeId', nodeInfo.nodeId)
+                              .setScale(nodeScale)
+                              .refreshBody();
+
+            if (newNode) {
+                 newNode.anims.play('node_active', true);
+            } else {
+                 console.error(`[Phaser Scene] Failed to create node ${nodeInfo.nodeId} during setupNodes`);
+            }
+       });
+
+       this.updateAndEmitNodeCount(); // Update count after setting up nodes
+    }
+
 
   update(time: number, delta: number) {
     // Only process player movement if input is enabled
@@ -773,5 +818,3 @@ export default class MainScene extends Phaser.Scene {
       super.destroy();
   }
 }
-
-    

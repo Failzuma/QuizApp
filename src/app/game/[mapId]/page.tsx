@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useEffect, useRef, useState, use } from 'react';
@@ -19,7 +20,69 @@ import { useToast } from "@/hooks/use-toast"; // Import useToast
 import { useIsMobile } from "@/hooks/use-mobile"; // Import useIsMobile hook
 import type nipplejs from 'nipplejs'; // Import nipplejs type only for type checking
 
-// Mock Data - Replace with real-time data later
+// --- Mock Data Structures (Simulating DB/API Data) ---
+
+interface QuizCollection {
+    id: string;
+    mapId: string;
+    title: string;
+    questionIds: string[]; // References questions below
+}
+
+// Represents individual questions
+interface Question {
+    id: string;
+    quizId: string; // Link back to the collection
+    type: string; // 'multiple-choice', 'short-answer', etc.
+    question: string;
+    options?: string[]; // Optional, only for certain types
+    correctAnswer: string;
+    // No nodeId here directly, mapping is separate
+}
+
+// Represents the link between a map node and a specific question
+interface NodeQuestionMapping {
+    mapId: string;
+    nodeId: string; // ID of the node in Phaser
+    questionId: string; // ID of the question to trigger
+    nodeDescription: string; // Description for the quiz modal title
+}
+
+// --- Mock Data Implementation ---
+
+const mockQuizzesCollections: QuizCollection[] = [
+    { id: 'quiz_map1', mapId: 'map1', title: 'English for IT Basics', questionIds: ['q_map1_1', 'q_map1_2'] },
+    { id: 'quiz_map2', mapId: 'map2', title: 'Grammar Tenses', questionIds: ['q_map2_1'] },
+    { id: 'quiz_map3', mapId: 'map3', title: 'Networking Concepts', questionIds: ['q_map3_1'] }, // Added for map3
+    // Add more quiz collections as needed
+];
+
+const mockAllQuestions: Question[] = [
+    // Questions for map1
+    { id: 'q_map1_1', quizId: 'quiz_map1', type: 'multiple-choice', question: 'Which HTML tag is used for the largest heading?', options: ['<h1>', '<h6>', '<head>', '<p>'], correctAnswer: '<h1>' },
+    { id: 'q_map1_2', quizId: 'quiz_map1', type: 'short-answer', question: 'What does CSS stand for?', correctAnswer: 'Cascading Style Sheets' },
+    // Questions for map2
+    { id: 'q_map2_1', quizId: 'quiz_map2', type: 'multiple-choice', question: 'Choose the correct past tense of "go".', options: ['go', 'went', 'gone', 'goes'], correctAnswer: 'went' },
+    // Questions for map3
+    { id: 'q_map3_1', quizId: 'quiz_map3', type: 'short-answer', question: 'What does LAN stand for?', correctAnswer: 'Local Area Network'},
+    // Add more questions
+];
+
+const mockNodeQuestionMappings: NodeQuestionMapping[] = [
+    // Map 1 nodes
+    { mapId: 'map1', nodeId: 'node_html_heading', questionId: 'q_map1_1', nodeDescription: 'HTML Heading Node' },
+    { mapId: 'map1', nodeId: 'node_css_acronym', questionId: 'q_map1_2', nodeDescription: 'CSS Acronym Node' },
+    // Map 2 nodes
+    { mapId: 'map2', nodeId: 'node_tense_go', questionId: 'q_map2_1', nodeDescription: 'Past Tense Node (Go)' },
+    // Map 3 nodes
+    { mapId: 'map3', nodeId: 'node_lan', questionId: 'q_map3_1', nodeDescription: 'LAN Acronym Node'},
+    // Add more mappings
+];
+
+// --- End Mock Data ---
+
+
+// Mock Data - Players (Keep as is for now)
 const mockPlayers = [
   { id: 'player1', name: 'Player One', score: 150, avatar: 'https://picsum.photos/seed/player1/40/40' },
   { id: 'player2', name: 'You', score: 120, avatar: 'https://picsum.photos/seed/you/40/40' },
@@ -27,30 +90,11 @@ const mockPlayers = [
   { id: 'player4', name: 'Another User', score: 75, avatar: 'https://picsum.photos/seed/user4/40/40' },
 ];
 
-// More dynamic mock quiz based on node interaction
-const mockQuizzes: Record<string, { type: string; question: string; options: string[]; correctAnswer: string, nodeDescription: string }> = {
-    'node_quiz1': {
-        type: 'multiple-choice',
-        question: 'Which HTML tag is used to define an internal style sheet?',
-        options: ['<style>', '<script>', '<css>', '<link>'],
-        correctAnswer: '<style>',
-        nodeDescription: 'CSS Styling Basics Node'
-    },
-    'node_quiz2': {
-        type: 'short-answer', // Example of different type
-        question: 'What does CSS stand for?',
-        options: [], // No options for short answer initially in this UI
-        correctAnswer: 'Cascading Style Sheets',
-        nodeDescription: 'CSS Acronym Node'
-    }
-};
-
-
 export default function GamePage({ params }: { params: Promise<{ mapId: string }> }) {
   const resolvedParams = use(params); // Use React.use to resolve the promise
   const [players, setPlayers] = useState(mockPlayers.sort((a, b) => b.score - a.score));
   const [showQuiz, setShowQuiz] = useState(false);
-  const [currentQuiz, setCurrentQuiz] = useState<typeof mockQuizzes[string] | null>(null);
+  const [currentQuizData, setCurrentQuizData] = useState<{ question: Question; nodeDescription: string; } | null>(null); // Holds the full Question object and node description
   const [currentQuizNodeId, setCurrentQuizNodeId] = useState<string | null>(null); // Store nodeId when quiz opens
   const [shortAnswerValue, setShortAnswerValue] = useState(''); // State for short answer input
   const [remainingNodesCount, setRemainingNodesCount] = useState<number | null>(null); // State for remaining nodes
@@ -64,36 +108,94 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   const joystickManagerRef = useRef<nipplejs.JoystickManager | null>(null);
   const joystickZoneRef = useRef<HTMLDivElement>(null); // Ref for the joystick container
 
+  // State for map-specific data
+  const [currentMapQuestions, setCurrentMapQuestions] = useState<Question[]>([]);
+  const [currentNodeMappings, setCurrentNodeMappings] = useState<NodeQuestionMapping[]>([]);
+  const [currentMapTitle, setCurrentMapTitle] = useState<string>('Loading...');
+
+   // Effect to load map-specific data when mapId changes
+   useEffect(() => {
+       if (resolvedParams?.mapId) {
+           const mapId = resolvedParams.mapId;
+           console.log(`[React] Loading data for mapId: ${mapId}`);
+
+           // 1. Find the Quiz Collection for this map
+           const quizCollection = mockQuizzesCollections.find(qc => qc.mapId === mapId);
+           setCurrentMapTitle(quizCollection?.title || `Map: ${decodeURIComponent(mapId)}`);
+
+           // 2. Filter Questions belonging to this map's quiz collection
+           const questionIdsForMap = quizCollection?.questionIds || [];
+           const questions = mockAllQuestions.filter(q => questionIdsForMap.includes(q.id));
+           setCurrentMapQuestions(questions);
+           console.log(`[React] Found ${questions.length} questions for map ${mapId}`);
+
+           // 3. Filter Node Mappings for this map
+           const mappings = mockNodeQuestionMappings.filter(nm => nm.mapId === mapId);
+           setCurrentNodeMappings(mappings);
+           console.log(`[React] Found ${mappings.length} node mappings for map ${mapId}`);
+
+           // Pass node data to Phaser scene (if scene is ready)
+           if (sceneInstanceRef.current) {
+               sceneInstanceRef.current.setupNodes(mappings.map(m => ({ nodeId: m.nodeId, x: 0, y: 0 }))); // Pass node IDs (adjust x/y if needed)
+               setRemainingNodesCount(mappings.length); // Initial count
+           } else {
+               // If scene isn't ready yet, initial count might be set later in postBoot or initScene
+                setRemainingNodesCount(mappings.length);
+               console.warn("[React] Scene instance not ready when map data loaded. Node setup might be delayed.");
+           }
+
+       } else {
+            console.warn("[React] mapId not available yet for data loading.");
+            setCurrentMapTitle('Map Loading...');
+            setCurrentMapQuestions([]);
+            setCurrentNodeMappings([]);
+            setRemainingNodesCount(null);
+       }
+   }, [resolvedParams?.mapId]); // Dependency on resolved mapId
+
 
   // Callback function for Phaser scene to trigger quiz
   const handleNodeInteraction: NodeInteractionCallback = (nodeId) => {
     console.log(`[React] Received interaction from node: ${nodeId}`);
-    const quizData = mockQuizzes[nodeId];
-    if (quizData) {
-        setCurrentQuiz(quizData);
-        setCurrentQuizNodeId(nodeId); // Store the nodeId associated with this quiz
-        setShowQuiz(true);
-        setShortAnswerValue(''); // Clear previous short answer
 
-        // --- CRITICAL: Disable Phaser player input when quiz opens ---
-        console.log("[React] Disabling player input for quiz.");
-        sceneInstanceRef.current?.disablePlayerInput();
-        // --- Highlight the node in Phaser ---
-        sceneInstanceRef.current?.highlightNode(nodeId);
+    // Find the mapping for this nodeId on the current map
+    const mapping = currentNodeMappings.find(nm => nm.nodeId === nodeId);
 
-        // Focus the input field shortly after the modal appears for short answers
-        if (quizData.type === 'short-answer') {
-             setTimeout(() => shortAnswerInputRef.current?.focus(), 100);
+    if (mapping) {
+        // Find the actual question data using the questionId from the mapping
+        const questionData = currentMapQuestions.find(q => q.id === mapping.questionId);
+
+        if (questionData) {
+            setCurrentQuizData({ question: questionData, nodeDescription: mapping.nodeDescription });
+            setCurrentQuizNodeId(nodeId); // Store the nodeId associated with this quiz
+            setShowQuiz(true);
+            setShortAnswerValue(''); // Clear previous short answer
+
+            // --- CRITICAL: Disable Phaser player input when quiz opens ---
+            console.log("[React] Disabling player input for quiz.");
+            sceneInstanceRef.current?.disablePlayerInput();
+            // --- Highlight the node in Phaser ---
+            sceneInstanceRef.current?.highlightNode(nodeId);
+
+            // Focus the input field shortly after the modal appears for short answers
+            if (questionData.type === 'short-answer') {
+                 setTimeout(() => shortAnswerInputRef.current?.focus(), 100);
+            }
+        } else {
+            console.warn(`[React] Question data not found for questionId: ${mapping.questionId} (linked to nodeId: ${nodeId})`);
+            // Handle missing question data - maybe re-enable node?
+             reEnableNode(nodeId);
+             console.log("[React] Enabling player input as question data was not found.");
+             sceneInstanceRef.current?.enablePlayerInput();
+             sceneInstanceRef.current?.clearNodeHighlight(nodeId);
         }
     } else {
-        console.warn(`[React] No quiz found for nodeId: ${nodeId}`);
-        // If no quiz, immediately signal Phaser to remove the non-interactive node
-        // This case might not be desirable, maybe just re-enable? Let's re-enable for now.
+        console.warn(`[React] No node mapping found for nodeId: ${nodeId} on map ${resolvedParams?.mapId}`);
+        // If no mapping, re-enable node and player input
         reEnableNode(nodeId);
-        // --- Ensure input is enabled if no quiz is shown ---
-        console.log("[React] Enabling player input as no quiz was found.");
+        console.log("[React] Enabling player input as no node mapping was found.");
         sceneInstanceRef.current?.enablePlayerInput();
-        sceneInstanceRef.current?.clearNodeHighlight(nodeId); // Clear highlight if no quiz
+        sceneInstanceRef.current?.clearNodeHighlight(nodeId);
     }
   };
 
@@ -142,9 +244,10 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         let game: Phaser.Game | null = null;
 
         const initPhaser = async () => {
-            // Ensure we have the mapId before initializing
-            if (!resolvedParams || !gameContainerRef.current || gameInstanceRef.current) {
-              console.log("[Phaser Init] Skipping initialization: missing params, container, or game already exists.");
+            // Ensure we have the mapId AND node mappings before initializing Phaser
+            // This prevents Phaser from starting before React knows which nodes to create
+            if (!resolvedParams?.mapId || currentNodeMappings.length === 0 || !gameContainerRef.current || gameInstanceRef.current) {
+              console.log("[Phaser Init] Skipping initialization: missing params, node mappings, container, or game already exists.");
               return;
             }
             console.log("[Phaser Init] Starting initialization...");
@@ -154,7 +257,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             const { default: MainScene } = await import('@/game/scenes/MainScene');
 
             // Create the scene instance *before* the game config
-            // Pass necessary data (mapId, callbacks) to the scene via its constructor or an init method
+            // Pass necessary data (mapId, callbacks, NODE DATA) to the scene via its constructor or an init method
             const mainSceneInstance = new MainScene();
 
             const config: Phaser.Types.Core.GameConfig = {
@@ -196,32 +299,43 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                   // Access the scene instance using the key provided in its constructor (default is the class name)
                   const scene = bootedGame.scene.getScene('MainScene') as MainSceneType; // Cast to the imported type
                   if (scene) {
-                      // Initialize the scene with mapId and callback AFTER it's ready
-                      // Check if scene has an init method that accepts data, otherwise use a custom method
+                      // Initialize the scene with mapId, callbacks, AND NODE DATA after it's ready
                       if (typeof scene.initScene === 'function') {
-                        console.log("[Phaser Init] Calling initScene with mapId and callbacks.");
-                        // Pass both callbacks
-                        scene.initScene({ mapId: resolvedParams.mapId }, handleNodeInteraction, handleNodesCountUpdate);
+                        console.log("[Phaser Init] Calling initScene with mapId, callbacks, and node mappings.");
+                        // Pass node mappings along with other data
+                        scene.initScene(
+                            { mapId: resolvedParams.mapId },
+                            handleNodeInteraction,
+                            handleNodesCountUpdate,
+                            // Pass node IDs and potentially initial positions if known
+                            // Adjust this based on how MainScene.ts expects node data
+                            currentNodeMappings.map(m => ({ nodeId: m.nodeId /*, x: ..., y: ... */ }))
+                        );
                         sceneInstanceRef.current = scene; // Store the scene instance reference
                         console.log("[Phaser Init] Scene initialized successfully in postBoot.");
+                        // Initial node count might be updated within initScene/create now
                       } else {
-                        console.error("[Phaser Init] MainScene does not have an initScene method.");
-                         // Fallback or alternative setup if initScene isn't defined
+                        console.error("[Phaser Init] MainScene does not have an initScene method supporting node data.");
                          sceneInstanceRef.current = scene;
-                         console.warn("[Phaser Init] Used legacy setInteractionCallback. Consider adding initScene(data, callback, countCallback) to MainScene.");
+                         console.warn("[Phaser Init] Consider updating initScene in MainScene.ts to accept node data.");
                       }
 
                   } else {
                       console.error("[Phaser Init] MainScene not found after boot. Ensure scene key matches.");
-                      // Attempt to get by index if key fails (less reliable)
-                      const sceneByIndex = bootedGame.scene.scenes[0];
+                       // Attempt to get by index if key fails (less reliable)
+                       const sceneByIndex = bootedGame.scene.scenes[0];
                        if (sceneByIndex instanceof MainScene && typeof sceneByIndex.initScene === 'function') {
                            console.log("[Phaser Init] Found scene by index, calling initScene.");
-                           sceneByIndex.initScene({ mapId: resolvedParams.mapId }, handleNodeInteraction, handleNodesCountUpdate);
+                           sceneByIndex.initScene(
+                               { mapId: resolvedParams.mapId },
+                               handleNodeInteraction,
+                               handleNodesCountUpdate,
+                               currentNodeMappings.map(m => ({ nodeId: m.nodeId }))
+                            );
                            sceneInstanceRef.current = sceneByIndex;
                            console.log("[Phaser Init] Scene initialized via index in postBoot.");
                        } else {
-                          console.error("[Phaser Init] Could not get scene instance by key or index, or initScene missing.");
+                          console.error("[Phaser Init] Could not get scene instance by key or index, or initScene missing/incorrect.");
                        }
                   }
                 }
@@ -248,8 +362,9 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
           sceneInstanceRef.current = null; // Clear scene ref
           console.log('[Phaser Cleanup] Phaser game instance destroyed.');
         };
-      // Add resolvedParams to dependencies to re-initialize if it changes (e.g., navigating between maps)
-      }, [resolvedParams]);
+      // Add resolvedParams AND currentNodeMappings to dependencies
+      // This ensures Phaser re-initializes if the map changes OR if the node data loads *after* the initial render
+      }, [resolvedParams?.mapId, currentNodeMappings]);
 
 
     // Initialize Joystick for mobile
@@ -339,20 +454,21 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
     const handleAnswerSubmit = (selectedAnswer: string) => {
       console.log(`[React] Answer submitted: "${selectedAnswer}". Current quiz node ID: ${currentQuizNodeId}`);
-      if (!currentQuiz || !currentQuizNodeId) {
-          console.error("[React] Cannot submit answer: currentQuiz or currentQuizNodeId is null.");
+      if (!currentQuizData?.question || !currentQuizNodeId) {
+          console.error("[React] Cannot submit answer: currentQuizData or currentQuizNodeId is null.");
           return;
       }
 
       // Capture nodeId before state potentially changes
       const nodeIdToRemove = currentQuizNodeId;
+      const questionDetails = currentQuizData.question;
 
-      const isCorrect = selectedAnswer.trim().toLowerCase() === currentQuiz.correctAnswer.toLowerCase(); // Trim and ignore case for short answers
+      const isCorrect = selectedAnswer.trim().toLowerCase() === questionDetails.correctAnswer.toLowerCase(); // Trim and ignore case for short answers
 
       // Display feedback toast
       toast({
           title: isCorrect ? "Correct!" : "Wrong!",
-          description: isCorrect ? "Good job!" : `The correct answer was: ${currentQuiz.correctAnswer}`,
+          description: isCorrect ? "Good job!" : `The correct answer was: ${questionDetails.correctAnswer}`,
           variant: isCorrect ? "default" : "destructive", // Use default (usually green/blue) for correct, destructive (red) for wrong
       });
 
@@ -383,7 +499,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
        sceneInstanceRef.current?.enablePlayerInput();
 
        // Reset quiz state AFTER ensuring node removal was requested
-      setCurrentQuiz(null);
+      setCurrentQuizData(null); // Reset full quiz data
       setCurrentQuizNodeId(null); // Reset current node ID
       setShortAnswerValue(''); // Clear short answer input
   };
@@ -413,7 +529,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
        sceneInstanceRef.current?.enablePlayerInput();
 
        // Reset quiz state
-      setCurrentQuiz(null);
+      setCurrentQuizData(null); // Reset full quiz data
       setCurrentQuizNodeId(null);
       setShortAnswerValue(''); // Clear short answer input
   }
@@ -455,7 +571,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
             {/* Map Details Overlay */}
             <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
-              <h1 className="text-lg font-bold text-primary">Map: {resolvedParams ? decodeURIComponent(resolvedParams.mapId) : 'Loading...'}</h1>
+              <h1 className="text-lg font-bold text-primary">{currentMapTitle}</h1>
               <p className="text-xs text-muted-foreground">Room Code: <span className="font-mono bg-muted px-1 py-0.5 rounded">XYZ123</span></p>
             </div>
 
@@ -504,7 +620,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                         <div className="flex items-center gap-2">
                         <span className="font-semibold w-5 text-center text-muted-foreground">{index + 1}</span>
                         <Avatar className="h-6 w-6"> {/* Smaller avatar */}
-                            <AvatarImage src={player.avatar} alt={player.name} />
+                            <AvatarImage src={player.avatar} alt={player.name} data-ai-hint="person avatar"/>
                             <AvatarFallback>{player.name.substring(0, 1)}</AvatarFallback>
                         </Avatar>
                         <span className={`flex-1 truncate ${player.name === 'You' ? 'font-bold text-primary' : ''}`}>{player.name}</span>
@@ -519,7 +635,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         </div>
 
         {/* Quiz Modal/Overlay */}
-        {showQuiz && currentQuiz && (
+        {showQuiz && currentQuizData?.question && (
             <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-20 p-4"> {/* Increased z-index */}
                 <Card className="w-full max-w-lg shadow-xl border-primary border-2"> {/* Added primary border */}
                     <CardHeader>
@@ -527,7 +643,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                            <div>
                                 <CardTitle className="text-primary flex items-center gap-2">
                                     <Target className="h-5 w-5"/> {/* Icon for Node */}
-                                    {currentQuiz.nodeDescription || "Quiz Time!"} {/* Show node description */}
+                                    {currentQuizData.nodeDescription || "Quiz Time!"} {/* Show node description */}
                                 </CardTitle>
                                 <CardDescription>Answer the question below.</CardDescription>
                            </div>
@@ -537,10 +653,10 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                         </div>
                     </CardHeader>
                     <CardContent>
-                    <p className="mb-6 text-lg font-medium">{currentQuiz.question}</p> {/* Increased margin */}
-                        {currentQuiz.type === 'multiple-choice' && (
+                    <p className="mb-6 text-lg font-medium">{currentQuizData.question.question}</p> {/* Increased margin */}
+                        {currentQuizData.question.type === 'multiple-choice' && currentQuizData.question.options && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {currentQuiz.options.map((option, index) => (
+                            {currentQuizData.question.options.map((option, index) => (
                                 <Button
                                     key={index}
                                     variant="outline"
@@ -552,7 +668,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                             ))}
                         </div>
                     )}
-                        {currentQuiz.type === 'short-answer' && (
+                        {currentQuizData.question.type === 'short-answer' && (
                              // Use a form for better accessibility and Enter key handling
                             <form onSubmit={(e) => { e.preventDefault(); submitShortAnswer(); }} className="space-y-3">
                                 <Input
@@ -572,7 +688,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                                 </Button>
                             </form>
                         )}
-                    {/* TODO: Add rendering for other quiz types */}
+                    {/* TODO: Add rendering for other quiz types (Matching, etc.) */}
                     </CardContent>
                 </Card>
             </div>
@@ -583,5 +699,3 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     </div>
   );
 }
-
-    
