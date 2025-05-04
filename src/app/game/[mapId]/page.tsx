@@ -375,8 +375,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         let manager: nipplejs.JoystickManager | null = null;
 
         const initJoystick = async () => {
-            // Only init joystick if on mobile and UI is generally visible (otherwise zone might be hidden)
-            if (isMobile && joystickZoneRef.current && !joystickManagerRef.current && isUIVisible) {
+            // Only init joystick if on mobile and the zone element exists
+            if (isMobile && joystickZoneRef.current && !joystickManagerRef.current) {
                 console.log("[Joystick] Initializing joystick...");
                 // Dynamically import nipplejs
                 const nipplejs = (await import('nipplejs')).default;
@@ -430,9 +430,9 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 });
 
                  console.log("[Joystick] Joystick initialized.");
-            } else if (!isUIVisible && joystickManagerRef.current) {
-                 // Destroy joystick if UI becomes hidden
-                 console.log("[Joystick] UI hidden, destroying joystick.");
+            } else if (!isMobile && joystickManagerRef.current) {
+                 // Destroy joystick if not on mobile
+                 console.log("[Joystick] Not mobile, destroying joystick.");
                  joystickManagerRef.current.destroy();
                  joystickManagerRef.current = null;
             }
@@ -457,8 +457,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
             }
         };
-     // Re-run if isMobile changes or UI visibility changes
-     }, [isMobile, isUIVisible]);
+     // Re-run only if isMobile changes
+     }, [isMobile]);
 
     const submitShortAnswer = () => {
         handleAnswerSubmit(shortAnswerValue);
@@ -589,7 +589,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         </div>
 
         {/* Mobile Joystick Area - Positioned over the game area */}
-         {isMobile && isUIVisible && ( // Only show if mobile AND UI is visible
+         {isMobile && ( // Always render the zone if mobile, but maybe hide visually if UI hidden (CSS approach later if needed)
             <div
               ref={joystickZoneRef}
               id="joystick-zone"
