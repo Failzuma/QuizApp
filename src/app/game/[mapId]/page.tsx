@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useEffect, useRef, useState, use } from 'react';
+import React, { useEffect, useRef, useState, use, useMemo, useCallback } from 'react';
 // Phaser is dynamically imported within useEffect
 // import * as Phaser from 'phaser';
 import { Header } from '@/components/Header';
@@ -90,7 +91,7 @@ const mockPlayers = [
 
 export default function GamePage({ params }: { params: Promise<{ mapId: string }> }) {
   const resolvedParams = use(params); // Use React.use to resolve the promise
-  const [players, setPlayers] = useState(mockPlayers.sort((a, b) => b.score - a.score));
+  const [players, setPlayers] = useState(mockPlayers); // Initial players, sorting done via useMemo
   const [showQuiz, setShowQuiz] = useState(false);
   const [currentQuizData, setCurrentQuizData] = useState<{ question: Question; nodeDescription: string; } | null>(null); // Holds the full Question object and node description
   const [currentQuizNodeId, setCurrentQuizNodeId] = useState<string | null>(null); // Store nodeId when quiz opens
@@ -159,8 +160,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
    }, [resolvedParams?.mapId]); // Dependency on resolved mapId
 
 
-  // Callback function for Phaser scene to trigger quiz
-  const handleNodeInteraction: NodeInteractionCallback = (nodeId) => {
+  // Callback function for Phaser scene to trigger quiz (using useCallback)
+  const handleNodeInteraction: NodeInteractionCallback = useCallback((nodeId) => {
     console.log(`[React] Received interaction from node: ${nodeId}`);
 
     // Find the mapping for this nodeId on the current map
@@ -189,7 +190,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         } else {
             console.warn(`[React] Question data not found for questionId: ${mapping.questionId} (linked to nodeId: ${nodeId})`);
             // Handle missing question data - maybe re-enable node?
-             reEnableNode(nodeId);
+             reEnableNode(nodeId); // Use standalone function
              console.log("[React] Enabling player input as question data was not found.");
              sceneInstanceRef.current?.enablePlayerInput();
              sceneInstanceRef.current?.clearNodeHighlight(nodeId);
@@ -197,22 +198,23 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     } else {
         console.warn(`[React] No node mapping found for nodeId: ${nodeId} on map ${resolvedParams?.mapId}`);
         // If no mapping, re-enable node and player input
-        reEnableNode(nodeId);
+        reEnableNode(nodeId); // Use standalone function
         console.log("[React] Enabling player input as no node mapping was found.");
         sceneInstanceRef.current?.enablePlayerInput();
         sceneInstanceRef.current?.clearNodeHighlight(nodeId);
     }
-  };
+    // Ensure dependencies are minimal and stable
+  }, [currentNodeMappings, currentMapQuestions, resolvedParams?.mapId]);
 
-  // Callback function for Phaser scene to update node count
-  const handleNodesCountUpdate: NodesCountCallback = (count) => {
-      console.log(`[React] Received nodes count update: ${count}`);
+  // Callback function for Phaser scene to update node count (using useCallback)
+  const handleNodesCountUpdate: NodesCountCallback = useCallback((count) => {
+      // console.log(`[React] Received nodes count update: ${count}`); // Can be noisy
       setRemainingNodesCount(count);
-  };
+  }, []); // No dependencies needed as it only calls setRemainingNodesCount
 
 
-  // Function to signal Phaser to remove a node
-  const removeNode = (nodeId: string) => {
+  // Function to signal Phaser to remove a node (using useCallback)
+  const removeNode = useCallback((nodeId: string) => {
     // Ensure scene instance is available before calling method
     console.log(`[React] Requesting removal of node: ${nodeId}`);
     if (sceneInstanceRef.current && typeof sceneInstanceRef.current.removeNode === 'function') {
@@ -220,10 +222,10 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     } else {
         console.warn("[React] Scene instance ref not set or removeNode not available, cannot remove node.");
     }
-  };
+  }, []); // No dependencies, sceneInstanceRef changes don't require recreating this function
 
-  // Function to signal Phaser to re-enable a node (only used when closing quiz now)
-  const reEnableNode = (nodeId: string) => {
+  // Function to signal Phaser to re-enable a node (using useCallback)
+  const reEnableNode = useCallback((nodeId: string) => {
         console.log(`[React] Requesting re-enable of node: ${nodeId}`);
        if (sceneInstanceRef.current && typeof sceneInstanceRef.current.reEnableNode === 'function') {
            sceneInstanceRef.current.reEnableNode(nodeId);
@@ -231,17 +233,17 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
        } else {
            console.warn("[React] Scene instance ref not set or reEnableNode not available, cannot re-enable node.");
        }
-   };
+   }, []); // No dependencies
 
-    // Function to signal Phaser to start cooldown
-    const startInteractionCooldown = (duration: number) => {
+    // Function to signal Phaser to start cooldown (using useCallback)
+    const startInteractionCooldown = useCallback((duration: number) => {
         console.log(`[React] Requesting interaction cooldown start: ${duration}ms`);
         if (sceneInstanceRef.current && typeof sceneInstanceRef.current.startInteractionCooldown === 'function') {
             sceneInstanceRef.current.startInteractionCooldown(duration);
         } else {
             console.warn("[React] Scene instance ref not set or startInteractionCooldown not available.");
         }
-    };
+    }, []); // No dependencies
 
 
   // Initialize Phaser Game
@@ -265,7 +267,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             const mainSceneInstance = new MainScene();
 
             const config: Phaser.Types.Core.GameConfig = {
-              type: Phaser.AUTO,
+              type: Phaser.AUTO, // Use AUTO to try WebGL first, then Canvas
               parent: gameContainerRef.current,
               // Use percentages or viewport units for parent container driven size
               width: '100%', // Phaser will use the parent container's size with RESIZE mode
@@ -348,8 +350,18 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
               }
             };
             console.log("[Phaser Init] Creating Phaser.Game instance.");
-            game = new Phaser.Game(config);
-            gameInstanceRef.current = game;
+            try {
+              game = new Phaser.Game(config);
+              gameInstanceRef.current = game;
+            } catch (error) {
+                console.error("[Phaser Init] Error creating Phaser Game instance:", error);
+                // Handle potential WebGL errors during creation
+                if (error instanceof Error && error.message.includes('WebGL')) {
+                    console.warn("[Phaser Init] WebGL context issue detected. Consider falling back to Canvas or checking device compatibility.");
+                    // Optionally, try forcing Canvas renderer here if applicable
+                }
+                setPhaserInitialized(false); // Allow trying again if needed
+            }
         }
 
         // Check if navigator is defined (runs only on client-side)
@@ -363,18 +375,33 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
         return () => {
           console.log('[Phaser Cleanup] Destroying Phaser game instance...');
-          // Ensure the game instance exists and has a destroy method before calling it
-          if (gameInstanceRef.current && typeof gameInstanceRef.current.destroy === 'function') {
-              gameInstanceRef.current.destroy(true); // Pass true to remove canvas
-          }
-          gameInstanceRef.current = null;
-          sceneInstanceRef.current = null; // Clear scene ref
-          setPhaserInitialized(false); // Reset init flag when component unmounts or map changes
-          console.log('[Phaser Cleanup] Phaser game instance destroyed.');
+           // Use a timeout to slightly delay destruction, potentially avoiding race conditions
+           // with other cleanup or state updates. Adjust delay if needed (or remove if causing issues).
+          const destroyTimeout = setTimeout(() => {
+              if (gameInstanceRef.current && typeof gameInstanceRef.current.destroy === 'function') {
+                  try {
+                    gameInstanceRef.current.destroy(true); // Pass true to remove canvas
+                    console.log('[Phaser Cleanup] Phaser game instance destroyed.');
+                  } catch (error) {
+                      console.error('[Phaser Cleanup] Error during game destruction:', error);
+                  } finally {
+                     gameInstanceRef.current = null;
+                     sceneInstanceRef.current = null; // Clear scene ref
+                     setPhaserInitialized(false); // Reset init flag when component unmounts or map changes
+                  }
+              } else {
+                   console.log('[Phaser Cleanup] Game instance already null or not destroyable.');
+                   gameInstanceRef.current = null; // Ensure it's null
+                   sceneInstanceRef.current = null;
+                   setPhaserInitialized(false);
+              }
+          }, 50); // 50ms delay, adjust as needed
+
+          return () => clearTimeout(destroyTimeout); // Cleanup the timeout itself if component unmounts quickly
         };
       // Add resolvedParams AND currentNodeMappings to dependencies
       // This ensures Phaser re-initializes if the map changes OR if the node data loads *after* the initial render
-      }, [resolvedParams?.mapId, currentNodeMappings, phaserInitialized]); // Added phaserInitialized
+      }, [resolvedParams?.mapId, currentNodeMappings, phaserInitialized, handleNodeInteraction, handleNodesCountUpdate]); // Added phaserInitialized and callbacks
 
 
     // Initialize Joystick for mobile
@@ -382,72 +409,75 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         let manager: nipplejs.JoystickManager | null = null;
 
         const initJoystick = async () => {
-            // Only init joystick if on mobile and the zone element exists
-            if (isMobile && joystickZoneRef.current && !joystickManagerRef.current) {
+            // Check element exists, is in DOM, and not already initialized
+            const zoneElement = joystickZoneRef.current;
+            if (isMobile && zoneElement && document.body.contains(zoneElement) && !joystickManagerRef.current) {
                 console.log("[Joystick] Initializing joystick...");
                 // Dynamically import nipplejs
                 const nipplejs = (await import('nipplejs')).default;
 
-                manager = nipplejs.create({
-                    zone: joystickZoneRef.current, // The DOM element for the joystick area
-                    mode: 'dynamic', // Allows joystick to appear where finger touches
-                    position: { left: '50%', top: '50%' }, // Centered in the zone initially
-                    color: 'rgba(255, 255, 255, 0.5)', // Semi-transparent white
-                    size: 100, // Size of the joystick base
-                    threshold: 0.1, // Minimum distance threshold to trigger move
-                    fadeTime: 250, // Fade time for the joystick appearance
-                    multitouch: false, // Disable multitouch for simplicity with zoom
-                    restJoystick: true, // Return to center when released
-                    restOpacity: 0.5, // Opacity when idle
-                    // lockX: false, // Allow diagonal movement
-                    // lockY: false,
-                    shape: 'circle', // Or 'square'
-                });
+                try {
+                    manager = nipplejs.create({
+                        zone: zoneElement, // The DOM element for the joystick area
+                        mode: 'dynamic', // Allows joystick to appear where finger touches
+                        position: { left: '50%', top: '50%' }, // Centered in the zone initially
+                        color: 'rgba(255, 255, 255, 0.5)', // Semi-transparent white
+                        size: 100, // Size of the joystick base
+                        threshold: 0.1, // Minimum distance threshold to trigger move
+                        fadeTime: 250, // Fade time for the joystick appearance
+                        multitouch: false, // Disable multitouch for simplicity with zoom
+                        restJoystick: true, // Return to center when released
+                        restOpacity: 0.5, // Opacity when idle
+                        shape: 'circle',
+                    });
 
-                joystickManagerRef.current = manager;
+                    joystickManagerRef.current = manager;
 
-                manager.on('start', (evt, data) => {
-                    console.log("[Joystick] Start");
-                    // Optional: visually indicate joystick is active
-                });
+                    manager.on('start', (evt, data) => {
+                        // console.log("[Joystick] Start");
+                    });
 
-                manager.on('move', (evt, data) => {
-                    // Pass joystick data to Phaser scene
-                    if (sceneInstanceRef.current?.joystickInput) {
-                         sceneInstanceRef.current.joystickInput(data);
-                     } else {
-                         // console.warn("[Joystick] Scene instance or joystickInput method not available during move."); // Can be noisy
-                     }
-                });
+                    manager.on('move', (evt, data) => {
+                        if (sceneInstanceRef.current?.joystickInput) {
+                             sceneInstanceRef.current.joystickInput(data);
+                         }
+                    });
 
-                manager.on('end', () => {
-                     console.log("[Joystick End]");
-                     // Signal Phaser scene that joystick is released
-                     if (sceneInstanceRef.current?.joystickInput) {
-                        sceneInstanceRef.current.joystickInput({
-                            vector: { x: 0, y: 0 },
-                            force: 0,
-                            angle: { radian: 0, degree: 0 },
-                            direction: undefined, // Indicate stop
-                        });
-                     } else {
-                         // console.warn("[Joystick] Scene instance or joystickInput method not available during end.");
-                     }
-                     // Optional: visually indicate joystick is inactive
-                });
+                    manager.on('end', () => {
+                         // console.log("[Joystick End]");
+                         if (sceneInstanceRef.current?.joystickInput) {
+                            sceneInstanceRef.current.joystickInput({
+                                vector: { x: 0, y: 0 },
+                                force: 0,
+                                angle: { radian: 0, degree: 0 },
+                                direction: undefined,
+                            });
+                         }
+                    });
 
-                 console.log("[Joystick] Joystick initialized.");
+                     console.log("[Joystick] Joystick initialized.");
+                } catch (error) {
+                    console.error("[Joystick] Error creating joystick instance:", error);
+                    // Handle error, maybe display a message or fallback control
+                }
+
             } else if (!isMobile && joystickManagerRef.current) {
                  // Destroy joystick if not on mobile
                  console.log("[Joystick] Not mobile, destroying joystick.");
                  joystickManagerRef.current.destroy();
                  joystickManagerRef.current = null;
+            } else if (isMobile && !zoneElement) {
+                console.warn("[Joystick] Cannot initialize: zone element not found in the DOM yet.");
+            } else if (isMobile && zoneElement && !document.body.contains(zoneElement)) {
+                 console.warn("[Joystick] Cannot initialize: zone element found but not attached to the DOM.");
             }
         };
 
-        // Only init if we are on the client
+        // Only init if we are on the client and element is potentially ready
         if (typeof window !== 'undefined') {
-            initJoystick();
+            // Delay slightly to ensure DOM elements are mounted
+            const timeoutId = setTimeout(initJoystick, 50);
+             return () => clearTimeout(timeoutId); // Clear timeout if unmounting before execution
         }
 
 
@@ -464,8 +494,8 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
             }
         };
-     // Re-run only if isMobile changes
-     }, [isMobile]);
+     // Re-run only if isMobile changes, also check if zone ref changes (though less likely)
+     }, [isMobile, joystickZoneRef.current]);
 
     const submitShortAnswer = () => {
         handleAnswerSubmit(shortAnswerValue);
@@ -513,7 +543,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
           console.log("[React] Answer Correct!");
           setPlayers(prevPlayers => prevPlayers.map(p =>
               p.name === 'You' ? { ...p, score: p.score + 10 } : p
-          ).sort((a, b) => b.score - a.score));
+          )); // Sorting is handled by useMemo now
       } else {
           console.log("[React] Answer Incorrect!");
           // No score update for wrong answers
@@ -594,6 +624,11 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   // Determine if the header should be shown
   // 'isMobile' might be undefined initially, so default to showing header until determined.
   const showHeader = isMobile === undefined || !isMobile;
+
+   // Memoize the sorted player list to prevent re-sorting on every render
+   const sortedPlayers = useMemo(() => {
+       return [...players].sort((a, b) => b.score - a.score);
+   }, [players]);
 
 
   return (
@@ -721,23 +756,24 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 </CardHeader>
                 <CardContent className="p-0"> {/* Remove padding to let ScrollArea handle it */}
                     {/* Adjust height */}
-                    <ScrollArea className="h-48 sm:h-60 px-2 sm:px-3 pb-2 sm:pb-3"> {/* Responsive height/padding */}
-                    <ul className="space-y-1.5 sm:space-y-2"> {/* Responsive spacing */}
-                        {players.map((player, index) => (
-                        <li key={player.id} className="flex items-center justify-between p-1 sm:p-1.5 rounded text-xs hover:bg-secondary/80 transition-colors"> {/* Smaller text, padding */}
-                            <div className="flex items-center gap-1.5 sm:gap-2"> {/* Responsive gap */}
-                            <span className="font-semibold w-4 sm:w-5 text-center text-muted-foreground">{index + 1}</span>
-                            <Avatar className="h-5 w-5 sm:h-6 sm:w-6"> {/* Smaller avatar */}
-                                <AvatarImage src={player.avatar} alt={player.name} data-ai-hint="person avatar"/>
-                                <AvatarFallback>{player.name.substring(0, 1)}</AvatarFallback>
-                            </Avatar>
-                            <span className={`flex-1 truncate ${player.name === 'You' ? 'font-bold text-primary' : ''}`}>{player.name}</span>
-                            </div>
-                            <span className="font-semibold text-primary">{player.score} pts</span>
-                        </li>
-                        ))}
-                    </ul>
-                    </ScrollArea>
+                    {/* Using ScrollArea caused infinite loop, replaced with simple div + overflow */}
+                    <div className="h-48 sm:h-60 overflow-y-auto px-2 sm:px-3 pb-2 sm:pb-3">
+                        <ul className="space-y-1.5 sm:space-y-2"> {/* Responsive spacing */}
+                            {sortedPlayers.map((player, index) => (
+                            <li key={player.id} className="flex items-center justify-between p-1 sm:p-1.5 rounded text-xs hover:bg-secondary/80 transition-colors"> {/* Smaller text, padding */}
+                                <div className="flex items-center gap-1.5 sm:gap-2"> {/* Responsive gap */}
+                                <span className="font-semibold w-4 sm:w-5 text-center text-muted-foreground">{index + 1}</span>
+                                <Avatar className="h-5 w-5 sm:h-6 sm:w-6"> {/* Smaller avatar */}
+                                    <AvatarImage src={player.avatar} alt={player.name} data-ai-hint="person avatar"/>
+                                    <AvatarFallback>{player.name.substring(0, 1)}</AvatarFallback>
+                                </Avatar>
+                                <span className={`flex-1 truncate ${player.name === 'You' ? 'font-bold text-primary' : ''}`}>{player.name}</span>
+                                </div>
+                                <span className="font-semibold text-primary">{player.score} pts</span>
+                            </li>
+                            ))}
+                        </ul>
+                    </div>
                 </CardContent>
                 </Card>
             </div>
