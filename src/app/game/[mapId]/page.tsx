@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect, useRef, useState, use } from 'react';
@@ -107,6 +106,9 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   const isMobile = useIsMobile(); // Check if mobile device
   const joystickManagerRef = useRef<nipplejs.JoystickManager | null>(null);
   const joystickZoneRef = useRef<HTMLDivElement>(null); // Ref for the joystick container
+  // State to ensure Phaser initialization runs only once after mapId is resolved
+  const [phaserInitialized, setPhaserInitialized] = useState(false);
+
 
   // State for map-specific data
   const [currentMapQuestions, setCurrentMapQuestions] = useState<Question[]>([]);
@@ -143,6 +145,9 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 setRemainingNodesCount(mappings.length);
                console.warn("[React] Scene instance not ready when map data loaded. Node setup might be delayed.");
            }
+            // Allow Phaser initialization now that data is loaded
+            setPhaserInitialized(false); // Reset flag to allow re-init if map changes
+
 
        } else {
             console.warn("[React] mapId not available yet for data loading.");
@@ -244,27 +249,26 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
         let game: Phaser.Game | null = null;
 
         const initPhaser = async () => {
-            // Ensure we have the mapId AND node mappings before initializing Phaser
-            // This prevents Phaser from starting before React knows which nodes to create
-            if (!resolvedParams?.mapId || currentNodeMappings.length === 0 || !gameContainerRef.current || gameInstanceRef.current) {
-              console.log("[Phaser Init] Skipping initialization: missing params, node mappings, container, or game already exists.");
+            // Ensure we have the mapId, node mappings, container, and haven't initialized already for this map
+            if (!resolvedParams?.mapId || currentNodeMappings.length === 0 || !gameContainerRef.current || phaserInitialized || gameInstanceRef.current) {
+              console.log("[Phaser Init] Skipping initialization: missing params, node mappings, container, or already initialized/exists.");
               return;
             }
             console.log("[Phaser Init] Starting initialization...");
+            setPhaserInitialized(true); // Mark as initialized for this map load
 
             // Dynamically import Phaser and the Scene
             const Phaser = await import('phaser');
             const { default: MainScene } = await import('@/game/scenes/MainScene');
 
             // Create the scene instance *before* the game config
-            // Pass necessary data (mapId, callbacks, NODE DATA) to the scene via its constructor or an init method
             const mainSceneInstance = new MainScene();
 
             const config: Phaser.Types.Core.GameConfig = {
               type: Phaser.AUTO,
               parent: gameContainerRef.current,
               // Use percentages or viewport units for parent container driven size
-              width: '100%',
+              width: '100%', // Phaser will use the parent container's size with RESIZE mode
               height: '100%',
               physics: {
                 default: 'arcade',
@@ -359,14 +363,18 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
         return () => {
           console.log('[Phaser Cleanup] Destroying Phaser game instance...');
-          gameInstanceRef.current?.destroy(true);
+          // Ensure the game instance exists and has a destroy method before calling it
+          if (gameInstanceRef.current && typeof gameInstanceRef.current.destroy === 'function') {
+              gameInstanceRef.current.destroy(true); // Pass true to remove canvas
+          }
           gameInstanceRef.current = null;
           sceneInstanceRef.current = null; // Clear scene ref
+          setPhaserInitialized(false); // Reset init flag when component unmounts or map changes
           console.log('[Phaser Cleanup] Phaser game instance destroyed.');
         };
       // Add resolvedParams AND currentNodeMappings to dependencies
       // This ensures Phaser re-initializes if the map changes OR if the node data loads *after* the initial render
-      }, [resolvedParams?.mapId, currentNodeMappings]);
+      }, [resolvedParams?.mapId, currentNodeMappings, phaserInitialized]); // Added phaserInitialized
 
 
     // Initialize Joystick for mobile
@@ -474,7 +482,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             event.preventDefault(); // Prevent form submission if it's in a form
             submitShortAnswer();
         }
-        // Prevent WASD from propagating to Phaser while typing
+        // Prevent WASD/Arrows from propagating to Phaser while typing
         if (['w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
              event.stopPropagation();
         }
@@ -583,12 +591,18 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     }
   };
 
+  // Determine if the header should be shown
+  // 'isMobile' might be undefined initially, so default to showing header until determined.
+  const showHeader = isMobile === undefined || !isMobile;
+
+
   return (
-    // Make the main container flex column and take full screen height minus header (approx)
+    // Make the main container flex column and take full screen height minus header (if shown)
     <div className="flex flex-col h-screen overflow-hidden">
       {/* Conditionally render Header based on device type */}
-      {!isMobile && <Header />}
-      {/* Removed container/padding from main to allow game to fill space */}
+      {showHeader && <Header />}
+
+      {/* Main content area takes up remaining space */}
       <main className="flex-grow relative"> {/* Added relative positioning */}
         {/* Game Area - Now takes up the majority of the space */}
         <div
@@ -606,9 +620,13 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
               ref={joystickZoneRef}
               id="joystick-zone"
               // Adjust positioning and size as needed. z-30 places it above game, below UI toggles/quiz.
-              // Opacity allows it to be visually hidden if desired, but pointerEvents control interaction.
+              // Use pointer-events-none to allow interaction with elements below (like the game canvas) when UI is hidden,
+              // but keep it visible.
               className="absolute bottom-0 left-0 w-1/2 h-1/2 z-30 opacity-75"
-              // Pointer events are enabled only when a quiz is NOT active. Independent of isUIVisible.
+              // Pointer events logic:
+              // - Enable if mobile AND UI is visible AND quiz is NOT showing
+              // - Enable if mobile AND UI is NOT visible AND quiz is NOT showing (joystick still works when UI is hidden)
+              // - Disable if quiz IS showing
               style={{ pointerEvents: !showQuiz ? 'auto' : 'none' }}
             >
               {/* Joystick will be created here by nipplejs dynamically */}
@@ -654,11 +672,11 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
          {/* Top-Left HUD Elements Container - Visibility controlled by isUIVisible */}
          {isUIVisible && (
-            <div className="absolute top-4 left-4 z-10 flex flex-col gap-4"> {/* Use flex-col and gap */}
+            <div className="absolute top-4 left-4 z-10 flex flex-col gap-4 w-full max-w-xs sm:max-w-sm md:max-w-md"> {/* Responsive width */}
 
                 {/* Map Details Overlay */}
                 <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
-                <h1 className="text-lg font-bold text-primary">{currentMapTitle}</h1>
+                <h1 className="text-lg font-bold text-primary truncate">{currentMapTitle}</h1> {/* Truncate long titles */}
                 <p className="text-xs text-muted-foreground">Room Code: <span className="font-mono bg-muted px-1 py-0.5 rounded">XYZ123</span></p>
                 </div>
 
@@ -693,22 +711,23 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
         {/* Sidebar - Leaderboard as HUD Overlay - Visibility controlled by isUIVisible */}
         {isUIVisible && (
-            <div className="absolute top-16 right-4 z-10 w-64"> {/* Adjust top offset due to UI toggle/zoom buttons */}
+            // Adjust position and size for responsiveness
+            <div className="absolute top-16 right-4 z-10 w-48 sm:w-56 md:w-64"> {/* Responsive width */}
                 <Card className="bg-background/70 backdrop-blur-sm shadow-lg border-primary/50"> {/* Semi-transparent HUD */}
-                <CardHeader className="p-3"> {/* Reduced padding */}
-                    <CardTitle className="text-base flex items-center gap-2"> {/* Smaller title */}
-                    <Trophy className="h-4 w-4 text-primary" /> Leaderboard
+                <CardHeader className="p-2 sm:p-3"> {/* Adjusted padding */}
+                    <CardTitle className="text-sm sm:text-base flex items-center gap-1 sm:gap-2"> {/* Responsive text/gap */}
+                    <Trophy className="h-3 w-3 sm:h-4 sm:w-4 text-primary" /> Leaderboard
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0"> {/* Remove padding to let ScrollArea handle it */}
-                    {/* Adjust height - make it dynamic or fixed height */}
-                    <ScrollArea className="h-60 px-3 pb-3"> {/* Fixed height example, adjust as needed */}
-                    <ul className="space-y-2">
+                    {/* Adjust height */}
+                    <ScrollArea className="h-48 sm:h-60 px-2 sm:px-3 pb-2 sm:pb-3"> {/* Responsive height/padding */}
+                    <ul className="space-y-1.5 sm:space-y-2"> {/* Responsive spacing */}
                         {players.map((player, index) => (
-                        <li key={player.id} className="flex items-center justify-between p-1.5 rounded text-xs hover:bg-secondary/80 transition-colors"> {/* Smaller text, padding */}
-                            <div className="flex items-center gap-2">
-                            <span className="font-semibold w-5 text-center text-muted-foreground">{index + 1}</span>
-                            <Avatar className="h-6 w-6"> {/* Smaller avatar */}
+                        <li key={player.id} className="flex items-center justify-between p-1 sm:p-1.5 rounded text-xs hover:bg-secondary/80 transition-colors"> {/* Smaller text, padding */}
+                            <div className="flex items-center gap-1.5 sm:gap-2"> {/* Responsive gap */}
+                            <span className="font-semibold w-4 sm:w-5 text-center text-muted-foreground">{index + 1}</span>
+                            <Avatar className="h-5 w-5 sm:h-6 sm:w-6"> {/* Smaller avatar */}
                                 <AvatarImage src={player.avatar} alt={player.name} data-ai-hint="person avatar"/>
                                 <AvatarFallback>{player.name.substring(0, 1)}</AvatarFallback>
                             </Avatar>

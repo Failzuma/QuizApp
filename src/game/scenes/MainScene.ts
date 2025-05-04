@@ -1,4 +1,3 @@
-
 import * as Phaser from 'phaser';
 import type { JoystickManager, JoystickOutputData } from 'nipplejs'; // Import types for joystick data
 
@@ -31,10 +30,9 @@ export default class MainScene extends Phaser.Scene {
   private currentBackground?: Phaser.GameObjects.Image;
   private playerSpeed = 200; // Player movement speed
   private initialCameraZoomLevel = 1.5; // Initial zoom level
-  private minZoom = 0.5; // Minimum zoom level
+  private minZoom = 0.5; // Minimum zoom level (will be recalculated based on background)
   private maxZoom = 3; // Maximum zoom level
   private zoomIncrement = 0.1; // How much to zoom per step (mouse wheel or button)
-  // private pinchZoomFactor = 0.005; // Sensitivity for pinch zoom - REMOVED
   private playerScale = 2.0; // Make player larger
   private playerInputEnabled = true; // Flag to control player movement input
   private interactionOnCooldown = false; // Flag to manage node interaction cooldown
@@ -42,7 +40,9 @@ export default class MainScene extends Phaser.Scene {
   private joystickDirection: { x: number; y: number } = { x: 0, y: 0 }; // Store joystick vector
   private highlightedNodeId: string | null = null; // Track the currently highlighted node
   private nodeCreationData: NodeData[] = []; // Store node data received from React
-  // private initialPinchDistance: number | null = null; // For pinch-to-zoom - REMOVED
+  // Removed pinch zoom variables as it's replaced by buttons
+  // private initialPinchDistance: number | null = null;
+  // private pinchZoomFactor = 0.005;
 
 
   constructor() {
@@ -241,13 +241,12 @@ export default class MainScene extends Phaser.Scene {
         this.cameras.main.setBounds(0, 0, bgWidth, bgHeight);
 
         // Calculate minZoom based on background size and game canvas size
-        // Prevent zooming out further than the background boundaries
-        const gameWidth = this.scale.width;
-        const gameHeight = this.scale.height;
-        this.minZoom = Math.max(gameWidth / bgWidth, gameHeight / bgHeight, 0.1); // Ensure minZoom is at least 0.1
-        this.minZoom = Phaser.Math.Clamp(this.minZoom, 0.1, 1); // Clamp between 0.1 and 1
+        // This calculation needs to happen *after* the scale manager is ready, ideally in resize event or after a short delay.
+        // For now, set a sensible default and refine in resize listener.
+        this.minZoom = 0.3; // Adjust this default as needed
+        this.updateMinZoom(); // Calculate initial minZoom based on current canvas size
 
-        console.log(`[Phaser Scene] Set background ${backgroundAssetKey} and world bounds: ${bgWidth}x${bgHeight}. Min zoom calculated: ${this.minZoom}`);
+        console.log(`[Phaser Scene] Set background ${backgroundAssetKey} and world bounds: ${bgWidth}x${bgHeight}. Initial min zoom guess: ${this.minZoom}`);
     } else {
         // This block should ideally not be reached if the logic above is correct,
         // but serves as a final fallback.
@@ -388,60 +387,6 @@ export default class MainScene extends Phaser.Scene {
          // console.log(`Zoom changed to: ${newZoom}`);
     });
 
-    // --- Pinch-to-Zoom (REMOVED) ---
-    /*
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        // Check if pointer1 and pointer2 exist and are down
-        if (this.input.pointer1?.isDown && this.input.pointer2?.isDown) {
-            this.initialPinchDistance = Phaser.Math.Distance.Between(
-                this.input.pointer1.x, this.input.pointer1.y,
-                this.input.pointer2.x, this.input.pointer2.y
-            );
-            // console.log("[Pinch] Start detected, initial distance:", this.initialPinchDistance);
-        } else {
-             this.initialPinchDistance = null; // Reset if only one pointer down initially or pointers are undefined
-        }
-    });
-
-    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-         // Only process pinch zoom if two pointers are down and we have an initial distance
-        // Ensure pointer1 and pointer2 exist
-        if (this.input.pointer1?.isDown && this.input.pointer2?.isDown && this.initialPinchDistance !== null) {
-            const currentDistance = Phaser.Math.Distance.Between(
-                this.input.pointer1.x, this.input.pointer1.y,
-                this.input.pointer2.x, this.input.pointer2.y
-            );
-            const deltaDistance = currentDistance - this.initialPinchDistance;
-
-             // Calculate zoom change based on the distance delta and sensitivity
-            let zoomChange = deltaDistance * this.pinchZoomFactor;
-            let newZoom = this.cameras.main.zoom + zoomChange;
-
-             // Clamp the new zoom level
-            newZoom = Phaser.Math.Clamp(newZoom, this.minZoom, this.maxZoom);
-
-            // Apply the zoom gradually for smoothness (optional, can set directly)
-            // this.cameras.main.zoomTo(newZoom, 50); // Zoom over 50ms
-            this.cameras.main.setZoom(newZoom); // Set directly for immediate feedback
-
-             // Update the initial distance for the next move event to make zoom continuous
-            this.initialPinchDistance = currentDistance;
-            // console.log("[Pinch] Move detected. New distance:", currentDistance, "New Zoom:", newZoom);
-        }
-    });
-
-    // Reset pinch distance when pointers are released
-     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-          // Use input.pointerTotal to check active pointers reliably
-          if (this.input.pointerTotal < 2) {
-               if (this.initialPinchDistance !== null) {
-                    // console.log("[Pinch] End detected.");
-                    this.initialPinchDistance = null;
-               }
-          }
-     });
-     */
-
 
      // Check if the callbacks were set correctly
      if (!this.onNodeInteract) {
@@ -450,8 +395,68 @@ export default class MainScene extends Phaser.Scene {
      if (!this.onNodesCountUpdate) {
         console.error("[Phaser Scene] CRITICAL: onNodesCountUpdate callback is NOT set in create() after initialization!");
      }
+
+     // --- Resize Listener ---
+     this.scale.on('resize', this.handleResize, this);
+     // Initial call to handleResize to set correct initial state based on size
+     this.handleResize(this.scale.gameSize);
+
+
      console.log("[Phaser Scene] MainScene create method finished.");
   }
+
+  // --- Resize Handler ---
+  handleResize(gameSize: Phaser.Structs.Size) {
+     const width = gameSize.width;
+     const height = gameSize.height;
+     console.log(`[Phaser Scene] Resize event detected: ${width}x${height}`);
+
+     // Recalculate minZoom based on the new canvas size and background size
+     this.updateMinZoom();
+
+     // Ensure current zoom is still within valid bounds after resize
+     const currentZoom = this.cameras.main.zoom;
+     const newClampedZoom = Phaser.Math.Clamp(currentZoom, this.minZoom, this.maxZoom);
+     if (newClampedZoom !== currentZoom) {
+         console.log(`[Phaser Scene] Clamping zoom from ${currentZoom} to ${newClampedZoom} after resize.`);
+         this.cameras.main.setZoom(newClampedZoom);
+     }
+
+     // Adjust camera bounds (usually handled automatically by setBounds in create)
+     // If background/world bounds change dynamically, update here:
+     // this.cameras.main.setBounds(0, 0, newWorldWidth, newWorldHeight);
+
+     // Optional: Reposition UI elements if needed (though React handles the overlays)
+ }
+
+ // Helper to calculate and update minimum zoom
+ updateMinZoom() {
+    if (!this.currentBackground) return; // Need background to calculate
+
+    const bgWidth = this.currentBackground.width;
+    const bgHeight = this.currentBackground.height;
+    const gameWidth = this.scale.width;
+    const gameHeight = this.scale.height;
+
+    // Prevent division by zero if dimensions are somehow 0
+    if (bgWidth <= 0 || bgHeight <= 0 || gameWidth <= 0 || gameHeight <= 0) {
+        console.warn("[Phaser Scene] Invalid dimensions for minZoom calculation.");
+        this.minZoom = 0.1; // Default fallback
+        return;
+    }
+
+    // Calculate the zoom level required to fit the background within the canvas
+    const zoomFitWidth = gameWidth / bgWidth;
+    const zoomFitHeight = gameHeight / bgHeight;
+
+    // The minimum zoom should be the larger of the two ratios to ensure the whole background is visible
+    this.minZoom = Math.max(zoomFitWidth, zoomFitHeight, 0.1); // Ensure minZoom is at least 0.1
+    // Clamp minZoom to a maximum of 1 (no point having minZoom > 1)
+    this.minZoom = Phaser.Math.Clamp(this.minZoom, 0.1, 1);
+
+    console.log(`[Phaser Scene] Min zoom recalculated: ${this.minZoom.toFixed(3)} (Canvas: ${gameWidth}x${gameHeight}, BG: ${bgWidth}x${bgHeight})`);
+ }
+
 
    handleNodeOverlap(player: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile,
                      node: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile)
@@ -531,6 +536,8 @@ export default class MainScene extends Phaser.Scene {
         }
      } else {
         console.warn(`[Phaser Scene] Node with ID ${nodeId} not found to remove.`);
+        // Still update the count in case of race conditions or state inconsistencies
+        this.updateAndEmitNodeCount();
      }
    }
 
@@ -638,7 +645,7 @@ export default class MainScene extends Phaser.Scene {
             // Use the angle to determine direction vector
             const angle = data.angle.radian;
             this.joystickDirection.x = Math.cos(angle);
-            // Negate Y because nipplejs Y might increase downwards, while Phaser Y increases upwards
+            // Y is inverted in screen coordinates vs math angle for Phaser velocity typically
             this.joystickDirection.y = -Math.sin(angle);
             // console.log(`[Joystick Move] Angle=${data.angle.degree}, Vector=(${this.joystickDirection.x.toFixed(2)}, ${this.joystickDirection.y.toFixed(2)})`);
         } else {
@@ -669,7 +676,9 @@ export default class MainScene extends Phaser.Scene {
             if (this.highlightedNodeId !== nodeId) {
                 console.log(`[Phaser Scene] Highlighting node: ${nodeId}`);
                 nodeToHighlight.setTint(0xffaa00); // Example highlight color (orange)
-                nodeToHighlight.setScale(nodeToHighlight.scale * 1.2); // Make it slightly larger
+                // Make it slightly larger - ensure scale logic is consistent
+                const currentScale = nodeToHighlight.scale; // Assuming nodes have uniform scale initially
+                nodeToHighlight.setScale(currentScale * 1.2);
                 this.highlightedNodeId = nodeId;
             }
         } else {
@@ -686,15 +695,12 @@ export default class MainScene extends Phaser.Scene {
             return spriteNode.getData('nodeId') === nodeId;
         }) as Phaser.Physics.Arcade.Sprite | undefined;
 
-        if (nodeToClear && nodeToClear.isTinted) {
+        if (nodeToClear && (nodeToClear.isTinted || nodeToClear.scale > 2)) { // Check scale deviation too
             console.log(`[Phaser Scene] Clearing highlight from node: ${nodeId}`);
             nodeToClear.clearTint();
-             // Ensure scale is reset correctly - get original scale if possible or divide
-             // Assuming original node scale was stored or known (e.g., nodeScale = 2)
-             const originalScale = 2; // Replace with stored value if available
-             nodeToClear.setScale(originalScale);
-             // Fallback if original scale isn't tracked:
-             // nodeToClear.setScale(nodeToClear.scale / 1.2); // Less reliable
+             // Reset scale to the original node scale (assuming it was 2)
+             const originalNodeScale = 2;
+             nodeToClear.setScale(originalNodeScale);
 
             if (this.highlightedNodeId === nodeId) {
                 this.highlightedNodeId = null;
@@ -780,7 +786,7 @@ export default class MainScene extends Phaser.Scene {
                  this.player.anims.play(`idle_${facing}`, true);
              } else {
                  this.player.anims.play('idle_down', true); // Default idle
-         }
+             }
          }
          return;
     }
@@ -878,11 +884,8 @@ export default class MainScene extends Phaser.Scene {
       }
        this.joystickDirection = { x: 0, y: 0 }; // Reset joystick state on shutdown
        this.clearNodeHighlight(this.highlightedNodeId); // Clear any active highlight
-       // Remove event listeners? Maybe not needed if scene is destroyed properly.
-       this.input.off('pointerdown');
-       this.input.off('pointermove');
-       this.input.off('pointerup');
-       this.input.off('wheel');
+       this.scale.off('resize', this.handleResize, this); // Remove resize listener
+
   }
 
   destroy() {
@@ -893,6 +896,7 @@ export default class MainScene extends Phaser.Scene {
       this.joystickDirection = { x: 0, y: 0 }; // Reset joystick state on destroy
       this.clearNodeHighlight(this.highlightedNodeId); // Clear any active highlight
       // Clean up other resources if necessary
+      this.scale.off('resize', this.handleResize, this); // Ensure listener is removed on destroy too
       super.destroy();
   }
 }
