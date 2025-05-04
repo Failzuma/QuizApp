@@ -581,8 +581,8 @@ export default class MainScene extends Phaser.Scene {
             // Use the angle to determine direction vector
             const angle = data.angle.radian;
             this.joystickDirection.x = Math.cos(angle);
-            // Y is inverted in screen coordinates vs math angle for Phaser velocity typically
-            this.joystickDirection.y = Math.sin(angle); // Adjust sign if needed based on testing
+            // Negate Y because nipplejs Y might increase downwards, while Phaser Y increases upwards
+            this.joystickDirection.y = -Math.sin(angle);
             // console.log(`[Joystick Move] Angle=${data.angle.degree}, Vector=(${this.joystickDirection.x.toFixed(2)}, ${this.joystickDirection.y.toFixed(2)})`);
         } else {
             // Joystick released or centered
@@ -752,7 +752,7 @@ export default class MainScene extends Phaser.Scene {
     // Joystick Input - Use if keyboard isn't pressed
     if (moveX === 0 && moveY === 0 && (this.joystickDirection.x !== 0 || this.joystickDirection.y !== 0)) {
         moveX = this.joystickDirection.x;
-        moveY = this.joystickDirection.y; // Assuming standard math angle (Y positive up)
+        moveY = this.joystickDirection.y; // Y is now negated in joystickInput method
     }
 
 
