@@ -1,5 +1,4 @@
 
-
 import * as Phaser from 'phaser';
 import type { JoystickManager, JoystickOutputData } from 'nipplejs'; // Import types for joystick data
 
@@ -34,8 +33,8 @@ export default class MainScene extends Phaser.Scene {
   private initialCameraZoomLevel = 1.5; // Initial zoom level
   private minZoom = 0.5; // Minimum zoom level
   private maxZoom = 3; // Maximum zoom level
-  private zoomIncrement = 0.1; // How much to zoom per step (mouse wheel)
-  private pinchZoomFactor = 0.005; // Sensitivity for pinch zoom
+  private zoomIncrement = 0.1; // How much to zoom per step (mouse wheel or button)
+  // private pinchZoomFactor = 0.005; // Sensitivity for pinch zoom - REMOVED
   private playerScale = 2.0; // Make player larger
   private playerInputEnabled = true; // Flag to control player movement input
   private interactionOnCooldown = false; // Flag to manage node interaction cooldown
@@ -43,7 +42,7 @@ export default class MainScene extends Phaser.Scene {
   private joystickDirection: { x: number; y: number } = { x: 0, y: 0 }; // Store joystick vector
   private highlightedNodeId: string | null = null; // Track the currently highlighted node
   private nodeCreationData: NodeData[] = []; // Store node data received from React
-  private initialPinchDistance: number | null = null; // For pinch-to-zoom
+  // private initialPinchDistance: number | null = null; // For pinch-to-zoom - REMOVED
 
 
   constructor() {
@@ -389,7 +388,8 @@ export default class MainScene extends Phaser.Scene {
          // console.log(`Zoom changed to: ${newZoom}`);
     });
 
-    // Pinch-to-Zoom
+    // --- Pinch-to-Zoom (REMOVED) ---
+    /*
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
         // Check if pointer1 and pointer2 exist and are down
         if (this.input.pointer1?.isDown && this.input.pointer2?.isDown) {
@@ -440,7 +440,7 @@ export default class MainScene extends Phaser.Scene {
                }
           }
      });
-
+     */
 
 
      // Check if the callbacks were set correctly
@@ -751,6 +751,21 @@ export default class MainScene extends Phaser.Scene {
        this.updateAndEmitNodeCount(); // Update count after setting up nodes
     }
 
+    // --- PUBLIC ZOOM METHODS ---
+    public zoomIn() {
+        let newZoom = this.cameras.main.zoom + this.zoomIncrement;
+        newZoom = Phaser.Math.Clamp(newZoom, this.minZoom, this.maxZoom);
+        this.cameras.main.zoomTo(newZoom, 100); // Smooth zoom
+        console.log(`[Phaser Scene] Zoom In requested. New zoom target: ${newZoom.toFixed(2)}`);
+    }
+
+    public zoomOut() {
+        let newZoom = this.cameras.main.zoom - this.zoomIncrement;
+        newZoom = Phaser.Math.Clamp(newZoom, this.minZoom, this.maxZoom);
+        this.cameras.main.zoomTo(newZoom, 100); // Smooth zoom
+        console.log(`[Phaser Scene] Zoom Out requested. New zoom target: ${newZoom.toFixed(2)}`);
+    }
+
 
   update(time: number, delta: number) {
     // Only process player movement if input is enabled
@@ -760,10 +775,12 @@ export default class MainScene extends Phaser.Scene {
             this.player.setVelocity(0);
              // Optionally ensure idle animation is playing
              const currentAnimKey = this.player.anims.currentAnim?.key;
-             if (currentAnimKey && !currentAnimKey.startsWith('idle_')) {
-                 const facing = currentAnimKey.split('_')[1] || 'down';
+             if (currentAnimKey && (currentAnimKey.startsWith('walk_') || currentAnimKey.startsWith('idle_'))) {
+                 const facing = currentAnimKey.split('_')[1];
                  this.player.anims.play(`idle_${facing}`, true);
-             }
+             } else {
+                 this.player.anims.play('idle_down', true); // Default idle
+         }
          }
          return;
     }
@@ -879,4 +896,3 @@ export default class MainScene extends Phaser.Scene {
       super.destroy();
   }
 }
-

@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useEffect, useRef, useState, use } from 'react';
@@ -13,7 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input'; // Import Input component
-import { X, Trophy, Target, CheckSquare, Eye, EyeOff, PanelTopClose, PanelTopOpen } from 'lucide-react'; // Added UI toggle icons
+import { X, Trophy, Target, CheckSquare, Eye, EyeOff, PanelTopClose, PanelTopOpen, ZoomIn, ZoomOut } from 'lucide-react'; // Added UI toggle, zoom icons
 import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
 import type { NodeInteractionCallback, NodesCountCallback } from '@/game/scenes/MainScene'; // Import the types only
 import { useToast } from "@/hooks/use-toast"; // Import useToast
@@ -571,6 +570,19 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
       setIsUIVisible(prevState => !prevState);
   }
 
+   // --- Zoom Button Handlers ---
+   const handleZoomIn = () => {
+    if (sceneInstanceRef.current?.zoomIn) {
+      sceneInstanceRef.current.zoomIn();
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (sceneInstanceRef.current?.zoomOut) {
+      sceneInstanceRef.current.zoomOut();
+    }
+  };
+
   return (
     // Make the main container flex column and take full screen height minus header (approx)
     <div className="flex flex-col h-screen overflow-hidden">
@@ -588,20 +600,44 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
           {/* Phaser canvas will be injected here */}
         </div>
 
-        {/* Mobile Joystick Area - Positioned over the game area */}
-         {isMobile && ( // Always render the zone if mobile, but maybe hide visually if UI hidden (CSS approach later if needed)
+        {/* Mobile Joystick Area - Positioned over the game area, visible only when UI is shown or quiz is not active */}
+         {isMobile && (
             <div
               ref={joystickZoneRef}
               id="joystick-zone"
-              className="absolute bottom-0 left-0 w-1/2 h-1/2 z-30" // Position bottom-left, adjust size as needed
-              style={{ pointerEvents: showQuiz ? 'none' : 'auto' }} // Disable joystick when quiz is shown
+              className={`absolute bottom-0 left-0 w-1/2 h-1/2 z-30 ${isUIVisible ? 'opacity-100' : 'opacity-0'}`} // Fade out if UI is hidden
+              style={{ pointerEvents: isUIVisible && !showQuiz ? 'auto' : 'none' }} // Only interactive if UI is visible AND no quiz shown
             >
               {/* Joystick will be created here by nipplejs dynamically */}
             </div>
          )}
 
-        {/* Top Control Bar (Contains UI Toggle) - Positioned Above Other UI */}
-        <div className="absolute top-4 right-4 z-20"> {/* Ensure it's above other overlays */}
+        {/* Top Right Control Bar (Contains UI Toggle & Zoom) - Positioned Above Other UI */}
+        <div className="absolute top-4 right-4 z-40 flex items-center gap-2"> {/* Use Z-40, higher than other overlays */}
+           {/* Zoom Buttons - Only shown if UI is visible */}
+           {isUIVisible && (
+             <>
+               <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleZoomIn}
+                  className="bg-background/70 backdrop-blur-sm text-primary hover:bg-background/90 shadow"
+                  title="Zoom In"
+               >
+                  <ZoomIn className="h-5 w-5" />
+               </Button>
+               <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleZoomOut}
+                  className="bg-background/70 backdrop-blur-sm text-primary hover:bg-background/90 shadow"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="h-5 w-5" />
+               </Button>
+             </>
+           )}
+           {/* UI Toggle Button - Always visible */}
            <Button
                variant="ghost"
                size="icon"
@@ -654,7 +690,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
         {/* Sidebar - Leaderboard as HUD Overlay - Visibility controlled by isUIVisible */}
         {isUIVisible && (
-            <div className="absolute top-16 right-4 z-10 w-64"> {/* Adjust top offset due to UI toggle button */}
+            <div className="absolute top-16 right-4 z-10 w-64"> {/* Adjust top offset due to UI toggle/zoom buttons */}
                 <Card className="bg-background/70 backdrop-blur-sm shadow-lg border-primary/50"> {/* Semi-transparent HUD */}
                 <CardHeader className="p-3"> {/* Reduced padding */}
                     <CardTitle className="text-base flex items-center gap-2"> {/* Smaller title */}
@@ -750,4 +786,3 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     </div>
   );
 }
-
