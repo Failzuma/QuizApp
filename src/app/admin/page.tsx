@@ -21,9 +21,14 @@ const mockMaps = [
 // Use React state for quizzes so it can be updated
 const initialMockQuizzes = [
     { id: 'q1', mapId: 'map1', nodeId: 'node3', question: 'What does CPU stand for?', type: 'Short Answer', options: [], correctAnswer: 'Central Processing Unit' },
-    { id: 'q2', mapId: 'map1', nodeId: 'node7', question: 'Match the term to its definition.', type: 'Matching', options: ['Term A:Def 1', 'Term B:Def 2'], correctAnswer: 'N/A'}, // Matching needs specific handling
+    { id: 'q2', mapId: 'map1', nodeId: 'node7', question: 'Match the term to its definition.', type: 'Matching', options: ['CPU:Central Processing Unit', 'RAM:Random Access Memory'], correctAnswer: 'N/A'}, // Matching options format
     { id: 'q3', mapId: 'map2', nodeId: 'node2', question: 'Choose the correct past tense verb.', type: 'Multiple Choice', options: ['go', 'went', 'gone', 'goes'], correctAnswer: 'went' },
+    { id: 'q4', mapId: 'map3', nodeId: 'node_osi', question: 'Order the first 3 layers of the OSI model (bottom-up).', type: 'Sequencing', options: ['Physical', 'Data Link', 'Network'], correctAnswer: 'N/A'}, // Sequencing uses options order
+    { id: 'q5', mapId: 'map1', nodeId: 'node_ports', question: 'Drag the protocol to the correct port number.', type: 'Drag & Drop', options: ['HTTP', 'HTTPS', 'FTP'], correctAnswer: 'N/A' }, // D&D items in options
+    { id: 'q6', mapId: 'map3', nodeId: 'node_router_pic', question: 'Click on the antenna of the router.', type: 'Hotspot', options: [], correctAnswer: 'N/A' },
+    { id: 'q7', mapId: 'map1', nodeId: 'node_scramble', question: 'nrtwoek', type: 'Scramble', options: [], correctAnswer: 'network' },
 ];
+
 
 const mockSessionResults = [
   { id: 'session1', mapTitle: 'English for IT - Vocabulary Basics', date: '2024-07-20', participants: 5, avgScore: 82 },
@@ -60,14 +65,15 @@ export default function AdminPage() {
 
   const handleAddQuiz = (data: QuizFormData) => {
     console.log('New Quiz Data:', data);
+    // Create a new quiz object based on the form data
     const newQuiz = {
-      id: `q${quizzes.length + 1}`, // Simple ID generation, replace with real ID
+      id: `q${Date.now()}`, // Use timestamp for more unique ID in mock data
       mapId: data.mapId,
       nodeId: data.nodeId,
       question: data.question,
       type: data.type,
-      options: data.options || [],
-      correctAnswer: data.correctAnswer,
+      options: data.options || [], // Use processed options
+      correctAnswer: data.correctAnswer || 'N/A', // Use processed correct answer
     };
     setQuizzes(prevQuizzes => [...prevQuizzes, newQuiz]);
     setIsAddQuizModalOpen(false); // Close modal on successful submission
@@ -80,7 +86,7 @@ export default function AdminPage() {
       <main className="flex-grow container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-6 text-primary">Admin Panel</h1>
 
-        <Tabs defaultValue="maps">
+        <Tabs defaultValue="quizzes"> {/* Default to quizzes tab */}
           <TabsList className="mb-6">
             <TabsTrigger value="maps"><Map className="mr-2 h-4 w-4" /> Maps</TabsTrigger>
             <TabsTrigger value="quizzes"><HelpCircle className="mr-2 h-4 w-4" /> Quizzes</TabsTrigger>
@@ -150,7 +156,7 @@ export default function AdminPage() {
                     <Table>
                     <TableHeader>
                         <TableRow>
-                        <TableHead>Question Snippet</TableHead>
+                        <TableHead>Question/Instruction</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Associated Map</TableHead>
                          <TableHead>Associated Node</TableHead>
@@ -160,7 +166,7 @@ export default function AdminPage() {
                     <TableBody>
                         {quizzes.map((quiz) => (
                         <TableRow key={quiz.id}>
-                            <TableCell className="font-medium max-w-xs truncate">{quiz.question}</TableCell>
+                            <TableCell className="font-medium max-w-sm truncate">{quiz.question}</TableCell> {/* Wider column */}
                             <TableCell>{quiz.type}</TableCell>
                              <TableCell>{mockMaps.find(m => m.id === quiz.mapId)?.title || 'N/A'}</TableCell>
                              <TableCell>{quiz.nodeId}</TableCell>
@@ -234,4 +240,3 @@ export default function AdminPage() {
     </div>
   );
 }
-

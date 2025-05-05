@@ -32,12 +32,13 @@ interface QuizCollection {
 interface Question {
     id: string;
     quizId: string; // Link back to the collection
-    type: string; // 'multiple-choice', 'short-answer', etc.
-    question: string;
-    options?: string[]; // Optional, only for certain types
-    correctAnswer: string;
+    type: 'Multiple Choice' | 'Short Answer' | 'Matching' | 'Sequencing' | 'Drag & Drop' | 'Hotspot' | 'Scramble'; // Use literal types
+    question: string; // Can also be instruction
+    options?: string[]; // Optional, for MC, Matching, Sequencing, D&D items
+    correctAnswer: string; // Varies: Exact answer for MC/SA/Scramble, 'N/A' or structure for others
     // No nodeId here directly, mapping is separate
 }
+
 
 // Represents the link between a map node and a specific question
 interface NodeQuestionMapping {
@@ -50,31 +51,46 @@ interface NodeQuestionMapping {
 // --- Mock Data Implementation ---
 
 const mockQuizzesCollections: QuizCollection[] = [
-    { id: 'quiz_map1', mapId: 'map1', title: 'English for IT Basics', questionIds: ['q_map1_1', 'q_map1_2'] },
-    { id: 'quiz_map2', mapId: 'map2', title: 'Grammar Tenses', questionIds: ['q_map2_1'] },
-    { id: 'quiz_map3', mapId: 'map3', title: 'Networking Concepts', questionIds: ['q_map3_1'] }, // Added for map3
+    { id: 'quiz_map1', mapId: 'map1', title: 'English for IT Basics', questionIds: ['q_map1_1', 'q_map1_2', 'q_map1_dd', 'q_map1_sc'] },
+    { id: 'quiz_map2', mapId: 'map2', title: 'Grammar Tenses', questionIds: ['q_map2_1', 'q_map2_seq'] },
+    { id: 'quiz_map3', mapId: 'map3', title: 'Networking Concepts', questionIds: ['q_map3_1', 'q_map3_match', 'q_map3_hot'] }, // Added for map3
     // Add more quiz collections as needed
 ];
 
 const mockAllQuestions: Question[] = [
     // Questions for map1
-    { id: 'q_map1_1', quizId: 'quiz_map1', type: 'multiple-choice', question: 'Which HTML tag is used for the largest heading?', options: ['<h1>', '<h6>', '<head>', '<p>'], correctAnswer: '<h1>' },
-    { id: 'q_map1_2', quizId: 'quiz_map1', type: 'short-answer', question: 'What does CSS stand for?', correctAnswer: 'Cascading Style Sheets' },
+    { id: 'q_map1_1', quizId: 'quiz_map1', type: 'Multiple Choice', question: 'Which HTML tag is used for the largest heading?', options: ['<h1>', '<h6>', '<head>', '<p>'], correctAnswer: '<h1>' },
+    { id: 'q_map1_2', quizId: 'quiz_map1', type: 'Short Answer', question: 'What does CSS stand for?', correctAnswer: 'Cascading Style Sheets' },
+    { id: 'q_map1_dd', quizId: 'quiz_map1', type: 'Drag & Drop', question: 'Drag the term to its category.', options: ['CPU', 'Monitor', 'Keyboard', 'Hardware', 'Software'], correctAnswer: 'N/A' }, // Example D&D
+    { id: 'q_map1_sc', quizId: 'quiz_map1', type: 'Scramble', question: 'tmhleset', correctAnswer: 'stylesheet' }, // Example Scramble
+
     // Questions for map2
-    { id: 'q_map2_1', quizId: 'quiz_map2', type: 'multiple-choice', question: 'Choose the correct past tense of "go".', options: ['go', 'went', 'gone', 'goes'], correctAnswer: 'went' },
+    { id: 'q_map2_1', quizId: 'quiz_map2', type: 'Multiple Choice', question: 'Choose the correct past tense of "go".', options: ['go', 'went', 'gone', 'goes'], correctAnswer: 'went' },
+    { id: 'q_map2_seq', quizId: 'quiz_map2', type: 'Sequencing', question: 'Order the steps to boot a computer.', options: ['Press Power Button', 'OS Loads', 'Login Screen Appears'], correctAnswer: 'N/A' }, // Example Sequencing
+
     // Questions for map3
-    { id: 'q_map3_1', quizId: 'quiz_map3', type: 'short-answer', question: 'What does LAN stand for?', correctAnswer: 'Local Area Network'},
+    { id: 'q_map3_1', quizId: 'quiz_map3', type: 'Short Answer', question: 'What does LAN stand for?', correctAnswer: 'Local Area Network'},
+    { id: 'q_map3_match', quizId: 'quiz_map3', type: 'Matching', question: 'Match the protocol to its default port.', options: ['HTTP:80', 'HTTPS:443', 'FTP:21'], correctAnswer: 'N/A'}, // Example Matching
+    { id: 'q_map3_hot', quizId: 'quiz_map3', type: 'Hotspot', question: 'Click on the WAN port of the router image.', options: [], correctAnswer: 'N/A' }, // Example Hotspot
     // Add more questions
 ];
+
 
 const mockNodeQuestionMappings: NodeQuestionMapping[] = [
     // Map 1 nodes
     { mapId: 'map1', nodeId: 'node_html_heading', questionId: 'q_map1_1', nodeDescription: 'HTML Heading Node' },
     { mapId: 'map1', nodeId: 'node_css_acronym', questionId: 'q_map1_2', nodeDescription: 'CSS Acronym Node' },
+    { mapId: 'map1', nodeId: 'node_drag_drop', questionId: 'q_map1_dd', nodeDescription: 'Hardware/Software Sort' },
+    { mapId: 'map1', nodeId: 'node_scramble', questionId: 'q_map1_sc', nodeDescription: 'Unscramble Term' },
+
     // Map 2 nodes
     { mapId: 'map2', nodeId: 'node_tense_go', questionId: 'q_map2_1', nodeDescription: 'Past Tense Node (Go)' },
+    { mapId: 'map2', nodeId: 'node_boot_sequence', questionId: 'q_map2_seq', nodeDescription: 'Boot Sequence' },
+
     // Map 3 nodes
     { mapId: 'map3', nodeId: 'node_lan', questionId: 'q_map3_1', nodeDescription: 'LAN Acronym Node'},
+    { mapId: 'map3', nodeId: 'node_ports_match', questionId: 'q_map3_match', nodeDescription: 'Port Matching' },
+    { mapId: 'map3', nodeId: 'node_wan_hotspot', questionId: 'q_map3_hot', nodeDescription: 'Router WAN Port' },
     // Add more mappings
 ];
 
@@ -184,7 +200,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             sceneInstanceRef.current?.highlightNode(nodeId);
 
             // Focus the input field shortly after the modal appears for short answers
-            if (questionData.type === 'short-answer') {
+            if (questionData.type === 'Short Answer') {
                  setTimeout(() => shortAnswerInputRef.current?.focus(), 100);
             }
         } else {
@@ -417,6 +433,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 return;
              }
 
+             // Ensure zoneElement is truly in the DOM before creating nipplejs instance
             if (isMobile && zoneElement && document.body.contains(zoneElement) && !joystickManagerRef.current) {
                 console.log("[Joystick] Initializing joystick...");
                 // Dynamically import nipplejs
@@ -468,6 +485,10 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                     if (error instanceof Error && error.message.includes('parentElement')) {
                         console.error("[Joystick] Error likely due to zoneElement not being fully ready in the DOM. Retrying might help.");
                         // Consider adding a small delay and retry logic here if this error persists
+                    } else if (error instanceof Error && error.message.includes("zone isn't part of DOM")) {
+                         console.error("[Joystick] Error: Zone element isn't part of DOM. Initialization failed.");
+                         // Potentially retry or log this specific failure
+                         joystickManagerRef.current = null; // Ensure ref is cleared if creation failed
                     }
                 }
 
@@ -480,13 +501,15 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 console.warn("[Joystick] Cannot initialize: zone element ref is null.");
             } else if (isMobile && zoneElement && !document.body.contains(zoneElement)) {
                  console.warn("[Joystick] Cannot initialize: zone element found but not attached to the DOM yet.");
+                 // Try again shortly?
+                  setTimeout(initJoystick, 200); // Optional retry
             }
         };
 
         // Only init if we are on the client and element is potentially ready
         if (typeof window !== 'undefined') {
             // Delay slightly to ensure DOM elements are mounted and layout is stable
-            const timeoutId = setTimeout(initJoystick, 100); // Increased delay slightly
+            const timeoutId = setTimeout(initJoystick, 150); // Increased delay slightly more
              return () => clearTimeout(timeoutId); // Clear timeout if unmounting before execution
         }
 
@@ -540,12 +563,33 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
       const nodeIdToRemove = currentQuizNodeId;
       const questionDetails = currentQuizData.question;
 
-      const isCorrect = selectedAnswer.trim().toLowerCase() === questionDetails.correctAnswer.toLowerCase(); // Trim and ignore case for short answers
+      // --- Determine Correctness (logic might vary by question type) ---
+      let isCorrect = false;
+      switch (questionDetails.type) {
+          case 'Multiple Choice':
+          case 'Short Answer':
+          case 'Scramble':
+              isCorrect = selectedAnswer.trim().toLowerCase() === questionDetails.correctAnswer.toLowerCase();
+              break;
+          // TODO: Add correctness logic for Matching, Sequencing, Drag & Drop, Hotspot
+          // These might involve comparing arrays, coordinates, etc.
+          case 'Matching':
+          case 'Sequencing':
+          case 'Drag & Drop':
+          case 'Hotspot':
+              console.log(`[React] Correctness check for type "${questionDetails.type}" not yet implemented.`);
+              // For now, assume correct for testing UI flow
+              isCorrect = true; // Placeholder
+              break;
+          default:
+              console.warn(`[React] Unknown quiz type for correctness check: ${questionDetails.type}`);
+      }
+
 
       // Display feedback toast
       toast({
           title: isCorrect ? "Correct!" : "Wrong!",
-          description: isCorrect ? "Good job!" : `The correct answer was: ${questionDetails.correctAnswer}`,
+          description: isCorrect ? "Good job!" : `The correct answer was: ${questionDetails.correctAnswer === 'N/A' ? '(Complex answer)' : questionDetails.correctAnswer}`,
           variant: isCorrect ? "default" : "destructive", // Use default (usually green/blue) for correct, destructive (red) for wrong
       });
 
@@ -801,7 +845,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                                     <Target className="h-5 w-5"/> {/* Icon for Node */}
                                     {currentQuizData.nodeDescription || "Quiz Time!"} {/* Show node description */}
                                 </CardTitle>
-                                <CardDescription>Answer the question below.</CardDescription>
+                                <CardDescription>{`Type: ${currentQuizData.question.type}`}</CardDescription>
                            </div>
                         <Button variant="ghost" size="icon" onClick={closeQuiz}>
                             <X className="h-5 w-5 text-muted-foreground hover:text-foreground" /> {/* Styled close button */}
@@ -810,21 +854,24 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                     </CardHeader>
                     <CardContent>
                     <p className="mb-6 text-lg font-medium">{currentQuizData.question.question}</p> {/* Increased margin */}
-                        {currentQuizData.question.type === 'multiple-choice' && currentQuizData.question.options && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {currentQuizData.question.options.map((option, index) => (
-                                <Button
-                                    key={index}
-                                    variant="outline"
-                                    className="justify-start text-left h-auto py-3 hover:bg-accent hover:text-accent-foreground transition-colors duration-200" // Added hover effect
-                                    onClick={() => handleAnswerSubmit(option)}
-                                    >
-                                    {option}
-                                </Button>
-                            ))}
-                        </div>
-                    )}
-                        {currentQuizData.question.type === 'short-answer' && (
+
+                        {/* Render different quiz types */}
+                        {currentQuizData.question.type === 'Multiple Choice' && currentQuizData.question.options && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {currentQuizData.question.options.map((option, index) => (
+                                    <Button
+                                        key={index}
+                                        variant="outline"
+                                        className="justify-start text-left h-auto py-3 hover:bg-accent hover:text-accent-foreground transition-colors duration-200" // Added hover effect
+                                        onClick={() => handleAnswerSubmit(option)}
+                                        >
+                                        {option}
+                                    </Button>
+                                ))}
+                            </div>
+                        )}
+
+                        {currentQuizData.question.type === 'Short Answer' && (
                              // Use a form for better accessibility and Enter key handling
                             <form onSubmit={(e) => { e.preventDefault(); submitShortAnswer(); }} className="space-y-3">
                                 <Input
@@ -844,7 +891,53 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                                 </Button>
                             </form>
                         )}
-                    {/* TODO: Add rendering for other quiz types (Matching, etc.) */}
+
+                         {/* TODO: Add Rendering for New Quiz Types */}
+                         {currentQuizData.question.type === 'Matching' && (
+                             <div className="text-muted-foreground italic">
+                                 Matching Quiz UI not yet implemented. Options: {JSON.stringify(currentQuizData.question.options)}
+                                 <Button onClick={() => handleAnswerSubmit('N/A')} className="mt-4">Submit (Placeholder)</Button>
+                             </div>
+                         )}
+                         {currentQuizData.question.type === 'Sequencing' && (
+                             <div className="text-muted-foreground italic">
+                                Sequencing Quiz UI not yet implemented. Options (Correct Order): {JSON.stringify(currentQuizData.question.options)}
+                                 <Button onClick={() => handleAnswerSubmit('N/A')} className="mt-4">Submit (Placeholder)</Button>
+                             </div>
+                         )}
+                         {currentQuizData.question.type === 'Drag & Drop' && (
+                             <div className="text-muted-foreground italic">
+                                Drag & Drop Quiz UI not yet implemented. Items: {JSON.stringify(currentQuizData.question.options)}
+                                 <Button onClick={() => handleAnswerSubmit('N/A')} className="mt-4">Submit (Placeholder)</Button>
+                             </div>
+                         )}
+                         {currentQuizData.question.type === 'Hotspot' && (
+                             <div className="text-muted-foreground italic">
+                                Hotspot Quiz UI not yet implemented. (Requires interaction with a background image/diagram)
+                                 <Button onClick={() => handleAnswerSubmit('N/A')} className="mt-4">Submit (Placeholder)</Button>
+                             </div>
+                         )}
+                         {currentQuizData.question.type === 'Scramble' && (
+                              <form onSubmit={(e) => { e.preventDefault(); submitShortAnswer(); }} className="space-y-3">
+                                <Input
+                                    ref={shortAnswerInputRef} // Can reuse ref
+                                    id="scramble-answer-input"
+                                    type="text"
+                                    placeholder="Unscramble and type here..."
+                                    value={shortAnswerValue}
+                                    onChange={(e) => setShortAnswerValue(e.target.value)}
+                                    onKeyDown={handleShortAnswerKeyDown}
+                                    className="w-full p-2 border rounded focus:ring-primary focus:border-primary"
+                                    autoComplete="off"
+                                    aria-label="Unscrambled answer input"
+                                />
+                                <Button type="submit" className="w-full">
+                                    Submit
+                                </Button>
+                            </form>
+                         )}
+
+
                     </CardContent>
                 </Card>
             </div>
@@ -855,3 +948,4 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     </div>
   );
 }
+
