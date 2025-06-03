@@ -44,23 +44,30 @@ export default function LoginPage() {
         return; // Stop further execution
     }
 
-    // Simulate network request for regular users (replace with actual API call)
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Simulate player login for any other non-empty credentials
+    if (email && password) {
+        console.log('Player login successful (simulated)');
+        // Simulate network request for player
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        toast({
+            title: "Login Successful",
+            description: "Welcome back! Redirecting to your dashboard...",
+        });
+        router.push('/dashboard'); // Redirect to dashboard for players
+        setIsLoading(false);
+        return;
+    }
 
-    // --- Placeholder for actual user authentication ---
-    // Example: Assume login failed for now
-    console.log('Regular login failed (placeholder)');
+    // If credentials don't match admin and are not considered a valid player login (e.g., empty fields)
+    console.log('Login failed (invalid credentials or empty fields)');
+    // Simulate a slight delay even for failures to prevent timing attacks
+    await new Promise(resolve => setTimeout(resolve, 500));
     toast({
         title: "Login Failed",
-        description: "Invalid email or password.",
+        description: "Invalid email or password. Please try again.",
         variant: "destructive",
     });
-    // --- End Placeholder ---
-
-    // On success for regular user:
-    // toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
-    // router.push('/dashboard');
-
+    
     setIsLoading(false);
   };
 
@@ -83,7 +90,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="text" // Change to text to allow 'admin' username
-                  placeholder="Enter your email or username (e.g., admin)"
+                  placeholder="Enter your email or username"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -96,7 +103,7 @@ export default function LoginPage() {
                   id="password"
                   type="password"
                   required
-                  placeholder="Enter your password (e.g., admin)" // Updated placeholder
+                  placeholder="Enter your password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}

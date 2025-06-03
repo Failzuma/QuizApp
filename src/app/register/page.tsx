@@ -1,7 +1,9 @@
+
 'use client'; // Required for form handling
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Import useRouter
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -10,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserPlus } from 'lucide-react';
 import { Separator } from '@/components/ui/separator'; // Import Separator
-import { cn } from '@/lib/utils'; // Import cn
+import { useToast } from "@/hooks/use-toast"; // Import useToast
 
 export default function RegisterPage() {
   const [name, setName] = React.useState('');
@@ -19,6 +21,8 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const router = useRouter(); // Initialize router
+  const { toast } = useToast(); // Initialize toast
 
   const handleRegister = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -30,15 +34,21 @@ export default function RegisterPage() {
     }
 
     setIsLoading(true);
-    // TODO: Implement actual registration logic here
-    // e.g., call an API endpoint with name, email, and password
-    console.log('Registration attempt with:', { name, email, password });
+    // TODO: Implement actual registration logic here (e.g., call an API endpoint)
+    // For now, we'll simulate a successful player account creation.
+    console.log('Registration attempt for player account with:', { name, email, password });
     try {
         await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network request
-        // On success, maybe show a success message and redirect to login:
-        // toast({ title: "Registration Successful!", description: "Please log in." })
-        // router.push('/login')
+        
+        // On successful "player" registration:
+        toast({ 
+            title: "Registration Successful!", 
+            description: "Your player account has been created. Please log in to continue." 
+        });
+        router.push('/login'); // Redirect to login page
+
     } catch (apiError: any) {
+        // This catch block would be for actual API errors
         setError(apiError.message || 'Registration failed. Please try again.');
     } finally {
        setIsLoading(false);
@@ -54,7 +64,7 @@ export default function RegisterPage() {
             <div className="mx-auto mb-4 p-3 rounded-full bg-secondary w-fit">
                <UserPlus className="h-8 w-8 text-primary" />
             </div>
-            <CardTitle>Create Your Account</CardTitle>
+            <CardTitle>Create Your Player Account</CardTitle>
             <CardDescription>Join QuizApp and start your learning journey!</CardDescription>
           </CardHeader>
           <CardContent>
@@ -76,7 +86,7 @@ export default function RegisterPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="your.email@example.com" // Updated placeholder
+                  placeholder="your.email@example.com" 
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -88,11 +98,12 @@ export default function RegisterPage() {
                 <Input
                   id="password"
                   type="password"
+                  placeholder="Choose a secure password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}
-                  minLength={6} // Example validation
+                  minLength={6} 
                 />
               </div>
               <div className="space-y-2">
@@ -100,6 +111,7 @@ export default function RegisterPage() {
                 <Input
                   id="confirm-password"
                   type="password"
+                  placeholder="Confirm your password"
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
@@ -110,7 +122,7 @@ export default function RegisterPage() {
                 <p className="text-sm text-destructive">{error}</p>
               )}
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Registering...' : 'Register'}
+                {isLoading ? 'Registering...' : 'Register Player Account'}
               </Button>
             </form>
             <Separator className="my-6" />
