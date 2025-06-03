@@ -28,39 +28,43 @@ export default function LoginPage() {
     event.preventDefault();
     setIsLoading(true);
 
-    // TODO: Implement actual authentication logic here
     console.log('Login attempt with:', { email, password, rememberMe });
 
     // Hardcoded admin check
     if (email === 'admin' && password === 'admin') {
         console.log('Admin login successful');
+        localStorage.setItem('isLoggedIn', 'true');
+        localStorage.setItem('userType', 'admin');
+        // Dispatch a storage event to notify other components like Header
+        window.dispatchEvent(new Event('storage'));
         toast({
             title: "Admin Login Successful",
             description: "Redirecting to admin panel...",
         });
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Short delay for toast visibility
-        router.push('/admin'); // Redirect to admin page
+        await new Promise(resolve => setTimeout(resolve, 1000)); 
+        router.push('/admin'); 
         setIsLoading(false);
-        return; // Stop further execution
+        return; 
     }
 
     // Simulate player login for any other non-empty credentials
     if (email && password) {
         console.log('Player login successful (simulated)');
-        // Simulate network request for player
+        localStorage.setItem('isLoggedIn', 'true');
+        localStorage.setItem('userType', 'player');
+         // Dispatch a storage event to notify other components like Header
+        window.dispatchEvent(new Event('storage'));
         await new Promise(resolve => setTimeout(resolve, 1000));
         toast({
             title: "Login Successful",
             description: "Welcome back! Redirecting to your dashboard...",
         });
-        router.push('/dashboard'); // Redirect to dashboard for players
+        router.push('/dashboard'); 
         setIsLoading(false);
         return;
     }
 
-    // If credentials don't match admin and are not considered a valid player login (e.g., empty fields)
     console.log('Login failed (invalid credentials or empty fields)');
-    // Simulate a slight delay even for failures to prevent timing attacks
     await new Promise(resolve => setTimeout(resolve, 500));
     toast({
         title: "Login Failed",
@@ -89,7 +93,7 @@ export default function LoginPage() {
                 <Label htmlFor="email">Email or Username</Label>
                 <Input
                   id="email"
-                  type="text" // Change to text to allow 'admin' username
+                  type="text" 
                   placeholder="Enter your email or username"
                   required
                   value={email}
@@ -109,13 +113,12 @@ export default function LoginPage() {
                   disabled={isLoading}
                 />
               </div>
-                {/* Remember Me Checkbox and Forgot Password Link */}
               <div className="flex items-center justify-between space-x-2">
                    <div className="flex items-center space-x-2">
                     <Checkbox
                         id="remember-me"
                         checked={rememberMe}
-                        onCheckedChange={(checked) => setRememberMe(Boolean(checked))} // Handle state change
+                        onCheckedChange={(checked) => setRememberMe(Boolean(checked))} 
                         disabled={isLoading}
                         aria-label="Keep me logged in"
                      />
@@ -127,7 +130,7 @@ export default function LoginPage() {
                      </Label>
                    </div>
                 <Link
-                  href="/forgot-password" // Create this page later if needed
+                  href="/forgot-password" 
                   className="text-sm text-primary hover:underline"
                 >
                   Forgot password?

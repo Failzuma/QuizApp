@@ -1,9 +1,14 @@
+
+'use client'; // Required for useState, useEffect
+
+import * as React from 'react';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { Map, PlayCircle } from 'lucide-react';
+import { Map, PlayCircle, Shield } from 'lucide-react'; // Added Shield for admin
+import { useRouter } from 'next/navigation';
 
 // Mock data for available maps - Replace with actual data fetching later
 const availableMaps = [
@@ -13,6 +18,29 @@ const availableMaps = [
 ];
 
 export default function Dashboard() {
+  const [userType, setUserType] = React.useState<string | null>(null);
+  const [isClient, setIsClient] = React.useState(false);
+  const router = useRouter();
+
+  React.useEffect(() => {
+    setIsClient(true); // Indicate client-side rendering
+    const type = localStorage.getItem('userType');
+    const loggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    setUserType(type);
+
+    // Basic protection: redirect if not logged in (for client-side)
+    // Proper protection should be via middleware or server-side checks
+    if (!loggedIn) {
+      router.replace('/login');
+    }
+  }, [router]);
+
+  if (!isClient) {
+    // Render nothing or a loading state on the server until client takes over
+    return null; 
+  }
+
+
   return (
     <div className="flex flex-col min-h-screen">
       <Header />
@@ -22,11 +50,19 @@ export default function Dashboard() {
           Choose a map to start your learning adventure or join an existing room.
         </p>
 
-         <div className="mb-8">
+         <div className="mb-8 flex space-x-2">
+            {/* This button is for players to start a quiz/game. It's not for creating quizzes. */}
            <Button>
-             <PlayCircle className="mr-2 h-4 w-4" /> Create New Quiz
+             <PlayCircle className="mr-2 h-4 w-4" /> Start a Quiz Map
            </Button>
-           {/* Add Input/Button to Join Room by Code later */}
+           {/* If the user is an admin, show a button to go to the admin panel to create/manage quizzes */}
+           {userType === 'admin' && (
+             <Button variant="outline" asChild>
+               <Link href="/admin">
+                 <Shield className="mr-2 h-4 w-4" /> Manage Quizzes (Admin)
+               </Link>
+             </Button>
+           )}
          </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -45,7 +81,6 @@ export default function Dashboard() {
               </CardContent>
               <div className="p-4 pt-0 mt-auto">
                  <Button className="w-full" asChild>
-                   {/* Link will eventually go to the game/room creation for this map */}
                    <Link href={`/game/${map.id}`}>Start Quiz</Link>
                  </Button>
               </div>
