@@ -166,7 +166,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
               physics: {
                 default: 'arcade',
                 arcade: {
-                  gravity: { y: 0 },
+                  gravity: { x: 0, y: 0 },
                    // debug: process.env.NODE_ENV === 'development' // Optional debug drawing
                 },
               },

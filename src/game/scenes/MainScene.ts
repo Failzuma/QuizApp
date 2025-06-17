@@ -388,9 +388,10 @@ export default class MainScene extends Phaser.Scene {
      console.log("[Phaser Scene] MainScene create method finished.");
   }
 
-   handleNodeOverlap(player: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile,
-                     node: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile)
-   {
+   handleNodeOverlap(
+     player: Phaser.GameObjects.GameObject | Phaser.Tilemaps.Tile | Phaser.Physics.Arcade.Body | Phaser.Physics.Arcade.StaticBody | Phaser.Types.Physics.Arcade.GameObjectWithBody,
+     node: Phaser.GameObjects.GameObject | Phaser.Tilemaps.Tile | Phaser.Physics.Arcade.Body | Phaser.Physics.Arcade.StaticBody | Phaser.Types.Physics.Arcade.GameObjectWithBody
+   ) {
      // Type guard to ensure node is a sprite with data and body
      if (!(node instanceof Phaser.Physics.Arcade.Sprite) || !node.body) {
        // console.log("[Overlap] Ignored non-sprite overlap");
@@ -650,17 +651,19 @@ export default class MainScene extends Phaser.Scene {
     }
 
 
-  update(time: number, delta: number) {
+  update(_time: number, _delta: number) {
     // Only process player movement if input is enabled
     if (!this.playerInputEnabled) {
          // Ensure player velocity is zero if input just got disabled
-         if(this.player?.body?.velocity.x !== 0 || this.player?.body?.velocity.y !== 0) {
+         if(this.player && this.player.body && (this.player.body.velocity.x !== 0 || this.player.body.velocity.y !== 0)) {
             this.player.setVelocity(0);
              // Optionally ensure idle animation is playing
-             const currentAnimKey = this.player.anims.currentAnim?.key;
-             if (currentAnimKey && !currentAnimKey.startsWith('idle_')) {
-                 const facing = currentAnimKey.split('_')[1] || 'down';
-                 this.player.anims.play(`idle_${facing}`, true);
+             if (this.player.anims) {
+                 const currentAnimKey = this.player.anims.currentAnim?.key;
+                 if (currentAnimKey && !currentAnimKey.startsWith('idle_')) {
+                     const facing = currentAnimKey.split('_')[1] || 'down';
+                     this.player.anims.play(`idle_${facing}`, true);
+                 }
              }
          }
          return;
@@ -770,7 +773,7 @@ export default class MainScene extends Phaser.Scene {
       this.joystickDirection = { x: 0, y: 0 }; // Reset joystick state on destroy
       this.clearNodeHighlight(this.highlightedNodeId); // Clear any active highlight
       // Clean up other resources if necessary
-      super.destroy();
+      // No need to call super.destroy(); Phaser.Scene does not have a destroy() method
   }
 }
 
