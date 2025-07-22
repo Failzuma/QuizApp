@@ -1,9 +1,9 @@
 
-'use client'; // Required for form handling
+'use client';
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -11,47 +11,63 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserPlus } from 'lucide-react';
-import { Separator } from '@/components/ui/separator'; // Import Separator
-import { useToast } from "@/hooks/use-toast"; // Import useToast
+import { Separator } from '@/components/ui/separator';
+import { useToast } from "@/hooks/use-toast";
 
 export default function RegisterPage() {
-  const [name, setName] = React.useState('');
+  const [username, setUsername] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const router = useRouter(); // Initialize router
-  const { toast } = useToast(); // Initialize toast
+  const router = useRouter();
+  const { toast } = useToast();
 
   const handleRegister = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError(null);
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match.');
+      toast({
+        title: "Error",
+        description: "Password tidak cocok.",
+        variant: "destructive",
+      });
       return;
     }
 
     setIsLoading(true);
-    // TODO: Implement actual registration logic here (e.g., call an API endpoint)
-    // For now, we'll simulate a successful player account creation.
-    console.log('Registration attempt for player account with:', { name, email, password });
-    try {
-        await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network request
-        
-        // On successful "player" registration:
-        toast({ 
-            title: "Registration Successful!", 
-            description: "Your player account has been created. Please log in to continue." 
-        });
-        router.push('/login'); // Redirect to login page
 
-    } catch (apiError: any) {
-        // This catch block would be for actual API errors
-        setError(apiError.message || 'Registration failed. Please try again.');
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: "Registrasi Berhasil!",
+          description: "Akun Anda telah dibuat. Silakan login.",
+        });
+        router.push('/login');
+      } else {
+        toast({
+          title: "Registrasi Gagal",
+          description: data.error || "Terjadi kesalahan.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Registration error:", error);
+      toast({
+        title: "Error",
+        description: "Tidak dapat terhubung ke server.",
+        variant: "destructive",
+      });
     } finally {
-       setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -64,20 +80,20 @@ export default function RegisterPage() {
             <div className="mx-auto mb-4 p-3 rounded-full bg-secondary w-fit">
                <UserPlus className="h-8 w-8 text-primary" />
             </div>
-            <CardTitle>Create Your Player Account</CardTitle>
-            <CardDescription>Join QuizApp and start your learning journey!</CardDescription>
+            <CardTitle>Buat Akun Anda</CardTitle>
+            <CardDescription>Gabung dengan PetaPolnep dan mulai perjalanan belajar Anda!</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleRegister} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
+                <Label htmlFor="username">Username</Label>
                 <Input
-                  id="name"
+                  id="username"
                   type="text"
-                  placeholder="Your Full Name"
+                  placeholder="Username Anda"
                   required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   disabled={isLoading}
                 />
               </div>
@@ -86,7 +102,7 @@ export default function RegisterPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="your.email@example.com" 
+                  placeholder="email.anda@contoh.com"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -98,39 +114,36 @@ export default function RegisterPage() {
                 <Input
                   id="password"
                   type="password"
-                  placeholder="Choose a secure password"
+                  placeholder="Buat password yang aman"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}
-                  minLength={6} 
+                  minLength={6}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm Password</Label>
+                <Label htmlFor="confirm-password">Konfirmasi Password</Label>
                 <Input
                   id="confirm-password"
                   type="password"
-                  placeholder="Confirm your password"
+                  placeholder="Konfirmasi password Anda"
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   disabled={isLoading}
                 />
               </div>
-              {error && (
-                <p className="text-sm text-destructive">{error}</p>
-              )}
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Registering...' : 'Register Player Account'}
+                {isLoading ? 'Mendaftarkan...' : 'Daftar Akun'}
               </Button>
             </form>
             <Separator className="my-6" />
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
-                Already have an account?{' '}
+                Sudah punya akun?{' '}
                 <Link href="/login" className="font-medium text-primary hover:underline">
-                  Log in here
+                  Masuk di sini
                 </Link>
               </p>
             </div>

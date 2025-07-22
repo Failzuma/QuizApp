@@ -6,26 +6,38 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Menu, MapPin, UserCircle, LogOut, ShieldCheck } from 'lucide-react'; // Added icons
+import { Menu, MapPin, UserCircle, LogOut, ShieldCheck, LayoutDashboard } from 'lucide-react'; // Added icons
 import { useToast } from "@/hooks/use-toast";
 
 const PixelMapIcon = () => (
   <MapPin className="h-6 w-6 text-primary" />
 );
 
+interface User {
+    user_id: number;
+    username: string;
+    email: string;
+    // Add other user properties if needed
+}
+
 export function Header() {
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
-  const [userType, setUserType] = React.useState<string | null>(null);
+  const [user, setUser] = React.useState<User | null>(null);
   const router = useRouter();
   const { toast } = useToast();
 
   React.useEffect(() => {
     // Function to update auth state from localStorage
     const updateAuthState = () => {
-      const loggedInStatus = localStorage.getItem('isLoggedIn') === 'true';
-      const type = localStorage.getItem('userType');
-      setIsLoggedIn(loggedInStatus);
-      setUserType(type);
+      const token = localStorage.getItem('token');
+      const userData = localStorage.getItem('user');
+      if (token && userData) {
+        setIsLoggedIn(true);
+        setUser(JSON.parse(userData));
+      } else {
+        setIsLoggedIn(false);
+        setUser(null);
+      }
     };
 
     // Initial check
@@ -41,49 +53,22 @@ export function Header() {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userType');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setIsLoggedIn(false);
-    setUserType(null);
+    setUser(null);
     // Dispatch a storage event to notify other components if necessary
     window.dispatchEvent(new Event('storage'));
-    toast({ title: "Logged Out", description: "You have been successfully logged out." });
+    toast({ title: "Logout Berhasil", description: "Anda telah berhasil keluar." });
     router.push('/login');
   };
 
-  const baseNavItems = [
-    { href: '/dashboard', label: 'Dashboard', requiresAuth: true, adminOnly: false },
+  const navItems = [
+    { href: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" />, requiresAuth: true },
+    { href: '/profile', label: 'Profil', icon: <UserCircle className="h-4 w-4" />, requiresAuth: true },
+    // Admin link can be conditional
+    // Logout is a button, not a link
   ];
-
-  const authNavItems = [
-     { href: '/login', label: 'Login', requiresAuth: false, adminOnly: false },
-     { href: '/register', label: 'Register', requiresAuth: false, adminOnly: false },
-  ];
-
-  const userActionItems = [
-    { href: '/profile', label: 'Profile', icon: <UserCircle className="h-4 w-4" />, requiresAuth: true, adminOnly: false },
-    // Admin Panel link is handled separately
-  ];
-
-  const getNavLinks = (isMobile: boolean) => {
-    let links = [];
-    if (isLoggedIn) {
-      links.push(...baseNavItems.filter(item => item.requiresAuth));
-      links.push(...userActionItems.filter(item => item.requiresAuth));
-      if (userType === 'admin') {
-        links.push({ href: '/admin', label: 'Admin Panel', icon: <ShieldCheck className="h-4 w-4" />, requiresAuth: true, adminOnly: true });
-      }
-      if (isMobile) { // Add logout to mobile menu if logged in
-        links.push({ href: '#logout', label: 'Logout', icon: <LogOut className="h-4 w-4" />, action: handleLogout, requiresAuth: true, adminOnly: false });
-      }
-    } else {
-      if(isMobile) { // For mobile, show Login/Register in the sheet if not logged in
-          links.push(...authNavItems);
-      }
-      // For desktop, Login/Register buttons are handled separately outside this list
-    }
-    return links;
-  };
 
 
   return (
@@ -93,12 +78,11 @@ export function Header() {
           <Link href="/" className="mr-6 flex items-center space-x-2">
             <PixelMapIcon />
             <span className="hidden font-bold sm:inline-block">
-              QuizApp
+              PetaPolnep
             </span>
           </Link>
            <nav className="hidden md:flex items-center gap-6 text-sm">
-             {getNavLinks(false).map((item) => (
-                 item.href !== '#logout' && ( // Exclude logout from here, it's a button
+             {isLoggedIn && navItems.map((item) => (
                  <Link
                   key={item.href}
                   href={item.href}
@@ -106,8 +90,10 @@ export function Header() {
                 >
                   {item.label}
                 </Link>
-                 )
              ))}
+             {isLoggedIn && user?.username === 'admin' && (
+                <Link href="/admin" className="text-foreground hover:text-primary transition-colors">Admin</Link>
+             )}
            </nav>
         </div>
 
@@ -125,29 +111,43 @@ export function Header() {
                   className="flex items-center space-x-2 mb-6 pl-6 pt-4"
                 >
                   <PixelMapIcon />
-                  <span className="font-bold">QuizApp</span>
+                  <span className="font-bold">PetaPolnep</span>
                 </Link>
                 <nav className="flex flex-col gap-3 px-6">
-                  {getNavLinks(true).map((item) => (
-                    item.action ? (
+                  {isLoggedIn ? (
+                    <>
+                     {navItems.map((item) => (
+                         <Link
+                          key={item.href}
+                          href={item.href}
+                          className="text-foreground hover:text-primary transition-colors py-1 flex items-center gap-2"
+                        >
+                          {item.icon} {item.label}
+                        </Link>
+                      ))}
+                      {user?.username === 'admin' && (
+                          <Link href="/admin" className="text-foreground hover:text-primary transition-colors py-1 flex items-center gap-2">
+                              <ShieldCheck className="h-4 w-4" /> Admin
+                          </Link>
+                      )}
                       <Button
-                        key={item.label}
                         variant="ghost"
                         className="justify-start gap-2"
-                        onClick={item.action}
+                        onClick={handleLogout}
                       >
-                        {item.icon} {item.label}
+                        <LogOut className="h-4 w-4" /> Logout
                       </Button>
-                    ) : (
-                     <Link
-                      key={item.href}
-                      href={item.href}
-                      className="text-foreground hover:text-primary transition-colors py-1 flex items-center gap-2"
-                    >
-                      {item.icon} {item.label}
-                    </Link>
-                    )
-                  ))}
+                    </>
+                  ) : (
+                     <>
+                        <Link href="/login" className="text-foreground hover:text-primary transition-colors py-1 flex items-center gap-2">
+                            <LogIn className="h-4 w-4"/> Login
+                        </Link>
+                        <Link href="/register" className="text-foreground hover:text-primary transition-colors py-1 flex items-center gap-2">
+                            <UserPlus className="h-4 w-4"/> Register
+                        </Link>
+                     </>
+                  )}
                 </nav>
               </SheetContent>
             </Sheet>
@@ -156,8 +156,6 @@ export function Header() {
         <div className="hidden md:flex items-center gap-2">
             {isLoggedIn ? (
                 <>
-                  {/* Profile link is already in navItems for desktop if needed, or could be a dedicated icon button */}
-                  {/* <Button variant="ghost" asChild> <Link href="/profile"><UserCircle className="mr-2"/>Profile</Link></Button> */}
                   <Button variant="outline" onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" /> Logout
                   </Button>

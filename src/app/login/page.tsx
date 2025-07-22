@@ -1,78 +1,71 @@
 
-'use client'; // Required for form handling
+'use client';
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LogIn } from 'lucide-react';
-import { useToast } from "@/hooks/use-toast"; // Import useToast
-import { Separator } from '@/components/ui/separator'; // Import Separator
-import { cn } from '@/lib/utils'; // Import cn
+import { useToast } from "@/hooks/use-toast";
+import { Separator } from '@/components/ui/separator';
 
 export default function LoginPage() {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [rememberMe, setRememberMe] = React.useState(true); // Default rememberMe to true
+  const [rememberMe, setRememberMe] = React.useState(true);
   const [isLoading, setIsLoading] = React.useState(false);
-  const router = useRouter(); // Initialize router
-  const { toast } = useToast(); // Initialize toast
+  const router = useRouter();
+  const { toast } = useToast();
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsLoading(true);
 
-    console.log('Login attempt with:', { email, password, rememberMe });
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-    // Hardcoded admin check
-    if (email === 'admin' && password === 'admin') {
-        console.log('Admin login successful');
-        localStorage.setItem('isLoggedIn', 'true');
-        localStorage.setItem('userType', 'admin');
-        // Dispatch a storage event to notify other components like Header
-        window.dispatchEvent(new Event('storage'));
+      const data = await response.json();
+
+      if (response.ok) {
         toast({
-            title: "Admin Login Successful",
-            description: "Redirecting to admin panel...",
+          title: "Login Berhasil",
+          description: "Selamat datang kembali!",
         });
-        await new Promise(resolve => setTimeout(resolve, 1000)); 
-        router.push('/admin'); 
-        setIsLoading(false);
-        return; 
-    }
-
-    // Simulate player login for any other non-empty credentials
-    if (email && password) {
-        console.log('Player login successful (simulated)');
-        localStorage.setItem('isLoggedIn', 'true');
-        localStorage.setItem('userType', 'player');
-         // Dispatch a storage event to notify other components like Header
+        // Store token and user info
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        // Dispatch storage event to update Header
         window.dispatchEvent(new Event('storage'));
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        toast({
-            title: "Login Successful",
-            description: "Welcome back! Redirecting to your dashboard...",
-        });
-        router.push('/dashboard'); 
-        setIsLoading(false);
-        return;
-    }
 
-    console.log('Login failed (invalid credentials or empty fields)');
-    await new Promise(resolve => setTimeout(resolve, 500));
-    toast({
-        title: "Login Failed",
-        description: "Invalid email or password. Please try again.",
+        // Redirect to dashboard
+        router.push('/dashboard');
+      } else {
+        toast({
+          title: "Login Gagal",
+          description: data.error || "Kredensial tidak valid.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      toast({
+        title: "Error",
+        description: "Terjadi kesalahan saat mencoba login.",
         variant: "destructive",
-    });
-    
-    setIsLoading(false);
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -84,17 +77,17 @@ export default function LoginPage() {
              <div className="mx-auto mb-4 p-3 rounded-full bg-secondary w-fit">
                 <LogIn className="h-8 w-8 text-primary" />
               </div>
-            <CardTitle>Welcome Back!</CardTitle>
-            <CardDescription>Log in to continue your learning adventure on QuizApp.</CardDescription>
+            <CardTitle>Selamat Datang Kembali!</CardTitle>
+            <CardDescription>Masuk untuk melanjutkan petualangan belajar Anda di PetaPolnep.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email or Username</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
-                  type="text" 
-                  placeholder="Enter your email or username"
+                  type="email"
+                  placeholder="Masukkan email Anda"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -107,7 +100,7 @@ export default function LoginPage() {
                   id="password"
                   type="password"
                   required
-                  placeholder="Enter your password" 
+                  placeholder="Masukkan password Anda"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}
@@ -118,43 +111,43 @@ export default function LoginPage() {
                     <Checkbox
                         id="remember-me"
                         checked={rememberMe}
-                        onCheckedChange={(checked) => setRememberMe(Boolean(checked))} 
+                        onCheckedChange={(checked) => setRememberMe(Boolean(checked))}
                         disabled={isLoading}
-                        aria-label="Keep me logged in"
+                        aria-label="Biarkan saya tetap masuk"
                      />
                      <Label
                         htmlFor="remember-me"
                         className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                       >
-                        Keep me logged in
+                        Biarkan saya tetap masuk
                      </Label>
                    </div>
                 <Link
-                  href="/forgot-password" 
+                  href="/forgot-password"
                   className="text-sm text-primary hover:underline"
                 >
-                  Forgot password?
+                  Lupa password?
                 </Link>
               </div>
 
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Logging In...' : 'Log In'}
+                {isLoading ? 'Sedang Masuk...' : 'Masuk'}
               </Button>
             </form>
             <Separator className="my-6" />
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
-                Don't have an account?{' '}
+                Belum punya akun?{' '}
                 <Link href="/register" className="font-medium text-primary hover:underline">
-                  Register here
+                  Daftar di sini
                 </Link>
               </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Or{' '}
+               <p className="text-sm text-muted-foreground mt-2">
+                Atau{' '}
                 <Link href="/dashboard" className="font-medium text-primary hover:underline">
-                  continue as Visitor
+                  lanjut sebagai Pengunjung
                 </Link>
-                 (progress not saved).
+                 (progress tidak disimpan).
               </p>
             </div>
           </CardContent>

@@ -1,0 +1,70 @@
+// File: prisma/schema.prisma
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  user_id         Int      @id @default(autoincrement())
+  username        String   @unique
+  email           String   @unique
+  password_hash   String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  answers         Answer[]
+  room_participants RoomParticipant[]
+}
+
+model MapNode {
+  node_id        Int      @id @default(autoincrement())
+  map_identifier String
+  title          String?
+  content        String?
+  posX           Int
+  posY           Int
+  questions      Question[]
+}
+
+model Question {
+  question_id    Int      @id @default(autoincrement())
+  node_id        Int
+  question_text  String
+  correct_answer String
+  options        Json?
+  mapNode        MapNode  @relation(fields: [node_id], references: [node_id])
+  answers        Answer[]
+}
+
+model Answer {
+  answer_id       Int      @id @default(autoincrement())
+  user_id         Int
+  question_id     Int
+  user_answer     String
+  is_correct      Boolean
+  waktu_pengerjaan DateTime @default(now())
+  user            User     @relation(fields: [user_id], references: [user_id])
+  question        Question @relation(fields: [question_id], references: [question_id])
+}
+
+model Room {
+  room_id         Int      @id @default(autoincrement())
+  room_name       String   @unique
+  map_identifier  String
+  created_at      DateTime @default(now())
+  participants    RoomParticipant[]
+}
+
+model RoomParticipant {
+  room_id       Int
+  user_id       Int
+  join_time     DateTime @default(now())
+  current_score Int      @default(0)
+  room          Room     @relation(fields: [room_id], references: [room_id])
+  user          User     @relation(fields: [user_id], references: [user_id])
+  @@id([room_id, user_id])
+}
