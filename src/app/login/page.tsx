@@ -78,7 +78,7 @@ export default function LoginPage() {
                 <LogIn className="h-8 w-8 text-primary" />
               </div>
             <CardTitle>Selamat Datang Kembali!</CardTitle>
-            <CardDescription>Masuk untuk melanjutkan petualangan belajar Anda di PetaPolnep.</CardDescription>
+            <CardDescription>Masuk untuk melanjutkan petualangan belajar Anda di Quizzer.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">

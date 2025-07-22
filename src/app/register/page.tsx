@@ -81,7 +81,7 @@ export default function RegisterPage() {
                <UserPlus className="h-8 w-8 text-primary" />
             </div>
             <CardTitle>Buat Akun Anda</CardTitle>
-            <CardDescription>Gabung dengan PetaPolnep dan mulai perjalanan belajar Anda!</CardDescription>
+            <CardDescription>Gabung dengan Quizzer dan mulai perjalanan belajar Anda!</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleRegister} className="space-y-4">
