@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Menu, MapPin, UserCircle, LogOut, ShieldCheck, LayoutDashboard } from 'lucide-react'; // Added icons
+import { Menu, MapPin, UserCircle, LogOut, ShieldCheck, LayoutDashboard, LogIn, UserPlus } from 'lucide-react'; // Added icons
 import { useToast } from "@/hooks/use-toast";
 
 const PixelMapIcon = () => (
@@ -33,7 +33,13 @@ export function Header() {
       const userData = localStorage.getItem('user');
       if (token && userData) {
         setIsLoggedIn(true);
-        setUser(JSON.parse(userData));
+        try {
+            setUser(JSON.parse(userData));
+        } catch(e) {
+            console.error("Failed to parse user data from localStorage", e);
+            // Handle corrupted data by logging out
+            handleLogout();
+        }
       } else {
         setIsLoggedIn(false);
         setUser(null);
