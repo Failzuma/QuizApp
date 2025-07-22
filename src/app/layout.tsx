@@ -7,7 +7,7 @@ import { Toaster } from "@/components/ui/toaster"; // Import Toaster
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' }); // Configure Inter font
 
 export const metadata: Metadata = {
-  title: 'QuizApp - Gamified Learning', // Updated title
+  title: 'Quizzer - Gamified Learning', // Updated title
   description: 'Interactive and gamified learning platform.', // Simplified description
 };
 
