@@ -31,7 +31,9 @@ export function Header() {
     const updateAuthState = () => {
       const token = localStorage.getItem('token');
       const userData = localStorage.getItem('user');
-      if (token && userData) {
+      const loggedInFlag = localStorage.getItem('isLoggedIn') === 'true';
+
+      if (loggedInFlag && token && userData) {
         setIsLoggedIn(true);
         try {
             setUser(JSON.parse(userData));
@@ -61,6 +63,8 @@ export function Header() {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('userType');
     setIsLoggedIn(false);
     setUser(null);
     // Dispatch a storage event to notify other components if necessary
@@ -89,7 +93,7 @@ export function Header() {
           </Link>
            <nav className="hidden md:flex items-center gap-6 text-sm">
              {isLoggedIn && navItems.map((item) => (
-                 <Link
+                 item.requiresAuth && <Link
                   key={item.href}
                   href={item.href}
                   className="text-foreground hover:text-primary transition-colors"
@@ -123,7 +127,7 @@ export function Header() {
                   {isLoggedIn ? (
                     <>
                      {navItems.map((item) => (
-                         <Link
+                         item.requiresAuth && <Link
                           key={item.href}
                           href={item.href}
                           className="text-foreground hover:text-primary transition-colors py-1 flex items-center gap-2"
@@ -162,6 +166,7 @@ export function Header() {
         <div className="hidden md:flex items-center gap-2">
             {isLoggedIn ? (
                 <>
+                  <span className="text-sm font-medium text-muted-foreground">Welcome, {user?.username || 'User'}!</span>
                   <Button variant="outline" onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" /> Logout
                   </Button>

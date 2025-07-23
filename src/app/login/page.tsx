@@ -27,6 +27,21 @@ export default function LoginPage() {
     event.preventDefault();
     setIsLoading(true);
 
+    // Hardcoded admin credentials check for prototyping
+    if (email === 'admin' && password === 'admin') {
+      toast({
+        title: "Admin Login Successful",
+        description: "Redirecting to admin panel...",
+      });
+      localStorage.setItem('isLoggedIn', 'true');
+      localStorage.setItem('userType', 'admin');
+      window.dispatchEvent(new Event('storage')); // Notify header to update
+      router.push('/admin'); // Redirect to admin page
+      setIsLoading(false);
+      return;
+    }
+
+
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -44,6 +59,13 @@ export default function LoginPage() {
         // Store token and user info
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
+        // --- Added for consistency with dashboard logic ---
+        localStorage.setItem('isLoggedIn', 'true');
+        // Determine user type (simple logic for prototype)
+        const userType = data.user.username === 'admin' ? 'admin' : 'player';
+        localStorage.setItem('userType', userType);
+        // --- End of added logic ---
+
         // Dispatch storage event to update Header
         window.dispatchEvent(new Event('storage'));
 
