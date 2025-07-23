@@ -33,10 +33,11 @@ export default function LoginPage() {
         title: "Admin Login Successful",
         description: "Redirecting to admin panel...",
       });
-      localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('userType', 'admin');
+      // Simulate admin login state
+      localStorage.setItem('token', 'admin-dummy-token');
+      localStorage.setItem('user', JSON.stringify({ username: 'admin' }));
       window.dispatchEvent(new Event('storage')); // Notify header to update
-      router.push('/admin'); // Redirect to admin page
+      router.push('/admin');
       setIsLoading(false);
       return;
     }
@@ -56,17 +57,11 @@ export default function LoginPage() {
           title: "Login Berhasil",
           description: "Selamat datang kembali!",
         });
-        // Store token and user info
+        // Store token and user info, this is the single source of truth
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        // --- Added for consistency with dashboard logic ---
-        localStorage.setItem('isLoggedIn', 'true');
-        // Determine user type (simple logic for prototype)
-        const userType = data.user.username === 'admin' ? 'admin' : 'player';
-        localStorage.setItem('userType', userType);
-        // --- End of added logic ---
 
-        // Dispatch storage event to update Header
+        // Dispatch storage event to update Header immediately
         window.dispatchEvent(new Event('storage'));
 
         // Redirect to dashboard

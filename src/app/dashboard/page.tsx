@@ -17,27 +17,41 @@ const availableMaps = [
   { id: 'map3', title: 'Networking Concepts Map', description: 'Explore the basics of computer networking (Placeholder).', subject: 'Jaringan Komputer', difficulty: 'Medium' },
 ];
 
+interface User {
+    username: string;
+}
+
 export default function Dashboard() {
-  const [userType, setUserType] = React.useState<string | null>(null);
+  const [user, setUser] = React.useState<User | null>(null);
   const [isClient, setIsClient] = React.useState(false);
   const router = useRouter();
 
   React.useEffect(() => {
-    setIsClient(true); // Indicate client-side rendering
-    const type = localStorage.getItem('userType');
-    const loggedIn = localStorage.getItem('isLoggedIn') === 'true';
-    setUserType(type);
+    setIsClient(true); // Indicate client-side rendering is happening
+    const token = localStorage.getItem('token');
+    const userData = localStorage.getItem('user');
 
-    // Basic protection: redirect if not logged in (for client-side)
-    // Proper protection should be via middleware or server-side checks
-    if (!loggedIn) {
+    if (!token) {
+      // If no token, redirect to login. This is client-side protection.
       router.replace('/login');
+    } else if (userData) {
+      // If there is a token, parse user data to check their role
+      try {
+        setUser(JSON.parse(userData));
+      } catch (e) {
+        console.error("Failed to parse user data from localStorage", e);
+        // If data is corrupted, clear it and redirect to login
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        router.replace('/login');
+      }
     }
   }, [router]);
 
-  if (!isClient) {
-    // Render nothing or a loading state on the server until client takes over
-    return null; 
+  if (!isClient || !user) {
+    // On the server, or before the client-side check has run, render a loading state or nothing.
+    // Also show loading if user is not yet set.
+    return null;
   }
 
 
@@ -51,12 +65,12 @@ export default function Dashboard() {
         </p>
 
          <div className="mb-8 flex space-x-2">
-            {/* This button is for players to start a quiz/game. It's not for creating quizzes. */}
+            {/* This button is for players to start a quiz/game. */}
            <Button>
              <PlayCircle className="mr-2 h-4 w-4" /> Start a Quiz Map
            </Button>
-           {/* If the user is an admin, show a button to go to the admin panel to create/manage quizzes */}
-           {userType === 'admin' && (
+           {/* If the user is an admin, show a button to go to the admin panel */}
+           {user.username === 'admin' && (
              <Button variant="outline" asChild>
                <Link href="/admin">
                  <Shield className="mr-2 h-4 w-4" /> Manage Quizzes (Admin)

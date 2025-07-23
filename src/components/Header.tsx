@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Menu, MapPin, UserCircle, LogOut, ShieldCheck, LayoutDashboard, LogIn, UserPlus } from 'lucide-react'; // Added icons
+import { Menu, MapPin, UserCircle, LogOut, ShieldCheck, LayoutDashboard, LogIn, UserPlus } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
 const PixelMapIcon = () => (
@@ -17,7 +17,6 @@ interface User {
     user_id: number;
     username: string;
     email: string;
-    // Add other user properties if needed
 }
 
 export function Header() {
@@ -27,20 +26,18 @@ export function Header() {
   const { toast } = useToast();
 
   React.useEffect(() => {
-    // Function to update auth state from localStorage
     const updateAuthState = () => {
+      // The single source of truth is the presence of the token.
       const token = localStorage.getItem('token');
       const userData = localStorage.getItem('user');
-      const loggedInFlag = localStorage.getItem('isLoggedIn') === 'true';
 
-      if (loggedInFlag && token && userData) {
+      if (token && userData) {
         setIsLoggedIn(true);
         try {
             setUser(JSON.parse(userData));
         } catch(e) {
             console.error("Failed to parse user data from localStorage", e);
-            // Handle corrupted data by logging out
-            handleLogout();
+            handleLogout(); // Log out if user data is corrupted
         }
       } else {
         setIsLoggedIn(false);
@@ -48,27 +45,19 @@ export function Header() {
       }
     };
 
-    // Initial check
     updateAuthState();
 
-    // Listen for custom 'storage' event dispatched from login/logout
     window.addEventListener('storage', updateAuthState);
 
-    // Cleanup listener
     return () => {
       window.removeEventListener('storage', updateAuthState);
     };
-  }, []);
+  }, []); // Empty dependency array means this effect runs once on mount and cleans up on unmount.
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userType');
-    setIsLoggedIn(false);
-    setUser(null);
-    // Dispatch a storage event to notify other components if necessary
-    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new Event('storage')); // Notify all components of auth change
     toast({ title: "Logout Berhasil", description: "Anda telah berhasil keluar." });
     router.push('/login');
   };
@@ -76,8 +65,6 @@ export function Header() {
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" />, requiresAuth: true },
     { href: '/profile', label: 'Profil', icon: <UserCircle className="h-4 w-4" />, requiresAuth: true },
-    // Admin link can be conditional
-    // Logout is a button, not a link
   ];
 
 
