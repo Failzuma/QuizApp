@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -54,7 +55,7 @@ export default function ProfilePage() {
         } else {
           const errorData = await response.json();
           toast({ title: "Gagal Memuat Profil", description: errorData.error || "Terjadi kesalahan.", variant: 'destructive' });
-          if (response.status === 401) {
+          if (response.status === 401 || response.status === 403) {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             window.dispatchEvent(new Event('storage'));
@@ -164,7 +165,7 @@ export default function ProfilePage() {
                  <CardDescription>Aktivitas dan skor terbaru Anda per sesi.</CardDescription>
                </CardHeader>
                <CardContent>
-                 {history.length > 0 ? (
+                 {history && history.length > 0 ? (
                    <ul className="space-y-4">
                      {history.map((session, index) => (
                        <li key={session.id}>

@@ -27,22 +27,6 @@ export default function LoginPage() {
     event.preventDefault();
     setIsLoading(true);
 
-    // Hardcoded admin credentials check for prototyping
-    if (email === 'admin' && password === 'admin') {
-      toast({
-        title: "Admin Login Successful",
-        description: "Redirecting to admin panel...",
-      });
-      // Simulate admin login state
-      localStorage.setItem('token', 'admin-dummy-token');
-      localStorage.setItem('user', JSON.stringify({ username: 'admin' }));
-      window.dispatchEvent(new Event('storage')); // Notify header to update
-      router.push('/admin');
-      setIsLoading(false);
-      return;
-    }
-
-
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -57,15 +41,19 @@ export default function LoginPage() {
           title: "Login Berhasil",
           description: "Selamat datang kembali!",
         });
-        // Store token and user info, this is the single source of truth
+        // Store token and user info from the API response
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
 
         // Dispatch storage event to update Header immediately
         window.dispatchEvent(new Event('storage'));
-
-        // Redirect to dashboard
-        router.push('/dashboard');
+        
+        // Redirect to dashboard or admin page based on user
+        if (data.user.username === 'admin') {
+            router.push('/admin');
+        } else {
+            router.push('/dashboard');
+        }
       } else {
         toast({
           title: "Login Gagal",

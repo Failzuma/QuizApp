@@ -19,6 +19,7 @@ const availableMaps = [
 
 interface User {
     username: string;
+    // Add other user properties as needed, e.g., role
 }
 
 export default function Dashboard() {
@@ -43,15 +44,22 @@ export default function Dashboard() {
         // If data is corrupted, clear it and redirect to login
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        window.dispatchEvent(new Event('storage'));
         router.replace('/login');
       }
+    } else {
+        // If there's a token but no user data, something is wrong.
+        // It's safer to log out and redirect to login.
+        localStorage.removeItem('token');
+        window.dispatchEvent(new Event('storage'));
+        router.replace('/login');
     }
   }, [router]);
 
   if (!isClient || !user) {
     // On the server, or before the client-side check has run, render a loading state or nothing.
     // Also show loading if user is not yet set.
-    return null;
+    return null; // Or a loading spinner component
   }
 
 
@@ -70,7 +78,7 @@ export default function Dashboard() {
              <PlayCircle className="mr-2 h-4 w-4" /> Start a Quiz Map
            </Button>
            {/* If the user is an admin, show a button to go to the admin panel */}
-           {user.username === 'admin' && (
+           {user && user.username === 'admin' && (
              <Button variant="outline" asChild>
                <Link href="/admin">
                  <Shield className="mr-2 h-4 w-4" /> Manage Quizzes (Admin)
