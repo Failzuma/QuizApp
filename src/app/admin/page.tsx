@@ -47,7 +47,7 @@ export default function AdminPage() {
   React.useEffect(() => {
     const fetchData = async () => {
       try {
-        setIsLoading(prev => ({ ...prev, maps: true, quizzes: true }));
+        setIsLoading(prev => ({ ...prev, maps: true, quizzes: true, results: true }));
         
         // Fetch Maps (Blueprints)
         const mapsResponse = await fetch('/api/maps/admin-summary'); // A new endpoint to get summary
@@ -73,7 +73,10 @@ export default function AdminPage() {
 
   const handleExportResults = () => {
       console.log("Exporting session results...");
-      // Logic for exporting results...
+      toast({
+          title: "Info",
+          description: "Fungsionalitas ekspor belum diimplementasikan."
+      })
   };
   
   const handleAddMap = async (data: MapBlueprintFormData) => {
@@ -250,14 +253,41 @@ export default function AdminPage() {
                     <CardDescription>Manage all individual questions across all maps.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <p className="text-muted-foreground text-center">Feature coming soon.</p>
+                    <p className="text-muted-foreground text-center py-4">Feature coming soon.</p>
                 </CardContent>
             </Card>
           </TabsContent>
 
           {/* Results Tab remains the same */}
           <TabsContent value="results">
-            {/* ... existing session results content ... */}
+             <Card>
+                <CardHeader>
+                    <div className="flex justify-between items-center">
+                        <CardTitle>Session Results</CardTitle>
+                        <Button size="sm" onClick={handleExportResults} disabled={sessionResults.length === 0}>
+                           <Download className="mr-2 h-4 w-4" /> Export All
+                        </Button>
+                    </div>
+                    <CardDescription>Review player performance and quiz outcomes from completed sessions.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {isLoading.results ? (
+                        <div className="text-center py-16">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+                            <p className="mt-4 text-muted-foreground">Loading results...</p>
+                        </div>
+                    ) : sessionResults.length > 0 ? (
+                        <p>Results table will be displayed here.</p>
+                    ) : (
+                         <div className="text-center py-16">
+                            <CardTitle className="text-xl">No Session Results</CardTitle>
+                            <CardDescription className="mt-2">
+                                There are no completed session results to display yet.
+                            </CardDescription>
+                        </div>
+                    )}
+                </CardContent>
+             </Card>
           </TabsContent>
         </Tabs>
       </main>
@@ -277,4 +307,5 @@ export default function AdminPage() {
        />
     </div>
   );
-}
+
+    
