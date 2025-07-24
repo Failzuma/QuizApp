@@ -17,7 +17,7 @@ model User {
   password_hash String
   created_at    DateTime  @default(now())
   answers       Answer[]
-  room_sessions RoomParticipant[]
+  room_participant RoomParticipant[]
 }
 
 model Map {
@@ -26,6 +26,17 @@ model Map {
   created_at     DateTime @default(now())
   nodes          MapNode[]
   obstacles      MapObstacle[]
+  quizzes        Quiz[] // A map can be a blueprint for many quizzes
+}
+
+// New table for playable quiz instances
+model Quiz {
+  quiz_id        Int       @id @default(autoincrement())
+  title          String
+  map_identifier String
+  map            Map       @relation(fields: [map_identifier], references: [map_identifier])
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
 }
 
 model MapNode {
@@ -34,32 +45,32 @@ model MapNode {
   map            Map        @relation(fields: [map_identifier], references: [map_identifier])
   title          String?
   content        String?
-  posX           Float?
-  posY           Float?
-  questions      Question[]
+  posX           Int?
+  posY           Int?
   created_at     DateTime   @default(now())
+  questions      Question[]
 }
 
 model MapObstacle {
   obstacle_id    Int      @id @default(autoincrement())
   map_identifier String
   map            Map      @relation(fields: [map_identifier], references: [map_identifier])
-  posX           Float
-  posY           Float
-  width          Float
-  height         Float
+  posX           Int
+  posY           Int
+  width          Int
+  height         Int
   created_at     DateTime @default(now())
 }
 
 model Question {
-  question_id    Int      @id @default(autoincrement())
-  node_id        Int
-  mapNode        MapNode  @relation(fields: [node_id], references: [node_id])
-  question_text  String
-  options        Json? // For Multiple Choice, Matching pairs, etc.
-  correct_answer String
-  created_at     DateTime @default(now())
-  answers        Answer[]
+  question_id     Int       @id @default(autoincrement())
+  node_id         Int
+  mapNode         MapNode   @relation(fields: [node_id], references: [node_id])
+  question_text   String
+  options         Json? // For multiple choice, matching pairs, etc.
+  correct_answer  String
+  created_at      DateTime  @default(now())
+  answers         Answer[]
 }
 
 model Answer {
@@ -71,26 +82,26 @@ model Answer {
   user_answer       String
   is_correct        Boolean
   waktu_pengerjaan  DateTime  @default(now())
-  room_id           Int?      // Optional: link to a specific multiplayer room
-  room              Room?     @relation(fields: [room_id], references: [room_id])
+  room_participant_id Int?
+  room_participant  RoomParticipant? @relation(fields: [room_participant_id], references: [id])
 }
 
 model Room {
-  room_id       Int      @id @default(autoincrement())
-  map_identifier String
-  room_code     String   @unique
-  is_active     Boolean  @default(true)
-  created_at    DateTime @default(now())
-  participants  RoomParticipant[]
-  answers       Answer[]
+  id                Int       @id @default(autoincrement())
+  room_code         String    @unique
+  map_identifier    String
+  created_at        DateTime  @default(now())
+  is_active         Boolean   @default(true)
+  participants      RoomParticipant[]
 }
 
 model RoomParticipant {
-  participant_id Int      @id @default(autoincrement())
-  room_id        Int
-  room           Room     @relation(fields: [room_id], references: [room_id])
-  user_id        Int
-  user           User     @relation(fields: [user_id], references: [user_id])
-  session_score  Int      @default(0)
-  joined_at      DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  room_id       Int
+  room          Room     @relation(fields: [room_id], references: [id])
+  user_id       Int
+  user          User     @relation(fields: [user_id], references: [user_id])
+  session_score Int      @default(0)
+  joined_at     DateTime @default(now())
+  answers       Answer[]
 }

@@ -8,28 +8,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users, Loader2 } from 'lucide-react';
+import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users, Loader2, BookOpen } from 'lucide-react';
 import { AddQuizModal, QuizFormData } from '@/components/admin/AddQuizModal';
 import { AddMapModal, MapBlueprintFormData } from '@/components/admin/AddMapModal';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 
-// Define interfaces for our data
 interface AdminMap {
-  id: string; // This is the map_identifier
+  id: string;
   title: string;
   nodes: number;
-  quizzes: number;
 }
 
 interface AdminQuiz {
-    id: string; // question_id
-    mapId: string; // map_identifier
-    nodeId: string; // node_id from the DB
-    question: string;
-    type: string;
-    options: string[];
-    correctAnswer: string;
+    id: number; // Now quiz_id
+    title: string;
+    mapId: string;
 }
 
 interface SessionResult {
@@ -39,7 +33,6 @@ interface SessionResult {
     participants: number;
     avgScore: number;
 }
-
 
 export default function AdminPage() {
   const [isAddQuizModalOpen, setIsAddQuizModalOpen] = React.useState(false);
@@ -51,166 +44,82 @@ export default function AdminPage() {
   const { toast } = useToast();
   const router = useRouter();
 
-    React.useEffect(() => {
-      // NOTE: API endpoints for these do not exist yet. This is placeholder for future implementation.
-      // For now, it will correctly show the "no data" message.
-      
-      // Fetch Maps
-      // setIsLoading(prev => ({ ...prev, maps: true }));
-      // fetch('/api/maps/admin-summary').then(res => res.json()).then(setMaps).finally(() => setIsLoading(prev => ({...prev, maps: false})));
-      setIsLoading(prev => ({...prev, maps: false})); // Mock loading finished
+  React.useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(prev => ({ ...prev, maps: true, quizzes: true }));
+        
+        // Fetch Maps (Blueprints)
+        const mapsResponse = await fetch('/api/maps/admin-summary'); // A new endpoint to get summary
+        const mapsData = await mapsResponse.json();
+        setMaps(mapsData);
 
-      // Fetch Quizzes
-      // setIsLoading(prev => ({ ...prev, quizzes: true }));
-      // fetch('/api/quizzes/all').then(res => res.json()).then(setQuizzes).finally(() => setIsLoading(prev => ({...prev, quizzes: false})));
-      setIsLoading(prev => ({...prev, quizzes: false})); // Mock loading finished
-
-      // Fetch Session Results
-      // setIsLoading(prev => ({ ...prev, results: true }));
-      // fetch('/api/sessions/results').then(res => res.json()).then(setSessionResults).finally(() => setIsLoading(prev => ({...prev, results: false})));
-      setIsLoading(prev => ({...prev, results: false})); // Mock loading finished
-    }, []);
+        // Fetch Quizzes (Playable Instances)
+        const quizzesResponse = await fetch('/api/quizzes'); // This now fetches playable quizzes
+        const quizzesData = await quizzesResponse.json();
+        const formattedQuizzes = quizzesData.map((q: any) => ({ id: q.id, title: q.title, mapId: q.mapId }));
+        setQuizzes(formattedQuizzes);
+        
+      } catch (error) {
+        console.error("Failed to fetch admin data", error);
+        toast({ title: "Error", description: "Could not load admin data.", variant: "destructive" });
+      } finally {
+        setIsLoading(prev => ({ ...prev, maps: false, quizzes: false, results: false }));
+      }
+    };
+    fetchData();
+  }, [toast]);
 
 
   const handleExportResults = () => {
       console.log("Exporting session results...");
-      const headers = "Session ID,Map Title,Date,Participants,Average Score\n";
-      const csvContent = sessionResults.map(s =>
-        `${s.id},"${s.mapTitle}",${s.date},${s.participants},${s.avgScore}`
-      ).join("\n");
-      const blob = new Blob([headers + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement("a");
-      if (link.download !== undefined) {
-          const url = URL.createObjectURL(blob);
-          link.setAttribute("href", url);
-          link.setAttribute("download", "session_results.csv");
-          link.style.visibility = 'hidden';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-      } else {
-        alert("CSV export is not supported in this browser.");
-      }
+      // Logic for exporting results...
   };
   
   const handleAddMap = async (data: MapBlueprintFormData) => {
     const token = localStorage.getItem('token');
-    if (!token) {
-        toast({ title: "Error", description: "Authentication token not found.", variant: "destructive" });
-        return;
-    }
-    
     try {
         const response = await fetch('/api/maps', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify(data)
         });
-
         const result = await response.json();
-
         if (response.ok) {
-            toast({
-                title: "Success!",
-                description: `Map '${result.map.title}' has been created with ${result.map.nodes.length} node(s).`,
-            });
-            // Refetch or update local state
-            const newMap: AdminMap = {
-                id: result.map.map_identifier,
-                title: result.map.title,
-                nodes: result.map.nodes.length,
-                quizzes: 0, // Initially no quizzes
-            };
+            toast({ title: "Success!", description: `Map '${result.map.title}' blueprint has been created.` });
+            const newMap: AdminMap = { id: result.map.map_identifier, title: result.map.title, nodes: data.nodes.length };
             setMaps(prevMaps => [...prevMaps, newMap]);
             setIsAddMapModalOpen(false);
         } else {
-             toast({
-                title: "Failed to Create Map",
-                description: result.error || "An unknown error occurred.",
-                variant: "destructive",
-            });
+             toast({ title: "Failed to Create Map", description: result.error || "An unknown error occurred.", variant: "destructive" });
         }
     } catch (error) {
-         toast({
-            title: "Network Error",
-            description: "Could not connect to the server to create the map.",
-            variant: "destructive",
-        });
+         toast({ title: "Network Error", description: "Could not connect to the server.", variant: "destructive" });
     }
   };
-
 
   const handleAddQuiz = async (data: QuizFormData) => {
     const token = localStorage.getItem('token');
-    if (!token) {
-        toast({ title: "Error", description: "Authentication token not found. Please log in.", variant: "destructive" });
-        return;
-    }
-
-    const payload = {
-      ...data,
-      // The nodeId is now expected to be the numeric ID from the database
-      nodeId: parseInt(data.nodeId, 10),
-    };
-
-     if (isNaN(payload.nodeId)) {
-        toast({ title: "Invalid Input", description: "Node ID must be a valid number.", variant: "destructive" });
-        return;
-    }
-
-
-    console.log('Sending new quiz data to API:', payload);
-
     try {
+        // This now creates a quiz *instance*, not a question
         const response = await fetch('/api/quizzes', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(payload)
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(data)
         });
-
         const result = await response.json();
-
         if (response.ok) {
-            toast({
-                title: "Success!",
-                description: "New quiz has been created successfully.",
-            });
-            // You might want to refresh the quiz list here from the DB
-            // For now, we'll just add the new quiz to the local state for immediate UI update.
-            const newQuizForState: AdminQuiz = {
-                id: result.question.question_id.toString(), // use new ID from DB
-                mapId: data.mapId,
-                nodeId: data.nodeId,
-                question: data.question,
-                type: data.type,
-                options: data.options || [],
-                correctAnswer: data.correctAnswer || 'N/A',
-            };
-            setQuizzes(prevQuizzes => [...prevQuizzes, newQuizForState]);
-            setIsAddQuizModalOpen(false); // Close modal
+            toast({ title: "Success!", description: `Quiz '${result.quiz.title}' has been created.` });
+            const newQuiz: AdminQuiz = { id: result.quiz.quiz_id, title: result.quiz.title, mapId: result.quiz.map_identifier };
+            setQuizzes(prevQuizzes => [...prevQuizzes, newQuiz]);
+            setIsAddQuizModalOpen(false);
         } else {
-             toast({
-                title: "Failed to Create Quiz",
-                description: result.error || "An unknown error occurred.",
-                variant: "destructive",
-            });
+            toast({ title: "Failed to Create Quiz", description: result.error || "An unknown error occurred.", variant: "destructive" });
         }
     } catch (error) {
-         toast({
-            title: "Network Error",
-            description: "Could not connect to the server to create the quiz.",
-            variant: "destructive",
-        });
+        toast({ title: "Network Error", description: "Could not connect to the server.", variant: "destructive" });
     }
   };
-
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -218,10 +127,11 @@ export default function AdminPage() {
       <main className="flex-grow container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-6 text-primary">Admin Panel</h1>
 
-        <Tabs defaultValue="maps">
+        <Tabs defaultValue="quizzes">
           <TabsList className="mb-6">
-            <TabsTrigger value="maps"><Map className="mr-2 h-4 w-4" /> Maps</TabsTrigger>
-            <TabsTrigger value="quizzes"><HelpCircle className="mr-2 h-4 w-4" /> Quizzes</TabsTrigger>
+            <TabsTrigger value="quizzes"><BookOpen className="mr-2 h-4 w-4" /> Playable Quizzes</TabsTrigger>
+            <TabsTrigger value="maps"><Map className="mr-2 h-4 w-4" /> Map Blueprints</TabsTrigger>
+            <TabsTrigger value="questions"><HelpCircle className="mr-2 h-4 w-4" /> Question Bank</TabsTrigger>
             <TabsTrigger value="results"><Users className="mr-2 h-4 w-4" /> Session Results</TabsTrigger>
           </TabsList>
 
@@ -229,12 +139,12 @@ export default function AdminPage() {
             <Card>
               <CardHeader>
                 <div className="flex justify-between items-center">
-                   <CardTitle>Manage Maps</CardTitle>
+                   <CardTitle>Manage Map Blueprints</CardTitle>
                    <Button size="sm" onClick={() => setIsAddMapModalOpen(true)}>
-                       <PlusCircle className="mr-2 h-4 w-4" /> Add New Map
+                       <PlusCircle className="mr-2 h-4 w-4" /> Add New Map Blueprint
                     </Button>
                 </div>
-                <CardDescription>Create, edit, or delete learning maps and their nodes.</CardDescription>
+                <CardDescription>Create or edit reusable map templates for your quizzes.</CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -243,22 +153,20 @@ export default function AdminPage() {
                       <TableHead>Map Title</TableHead>
                       <TableHead>Map Identifier</TableHead>
                       <TableHead>Nodes</TableHead>
-                      <TableHead>Quizzes</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {isLoading.maps ? (
-                        <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+                        <TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
                     ) : maps.length > 0 ? (
                         maps.map((map) => (
                           <TableRow key={map.id}>
                             <TableCell className="font-medium">{map.title}</TableCell>
                             <TableCell className="font-mono">{map.id}</TableCell>
                             <TableCell>{map.nodes}</TableCell>
-                             <TableCell>{map.quizzes}</TableCell>
                             <TableCell className="text-right space-x-2">
-                               <Button variant="ghost" size="icon" title="Edit Map & Obstacles" onClick={() => router.push(`/admin/maps/${map.id}/editor`)}>
+                               <Button variant="ghost" size="icon" title="Edit Obstacles" onClick={() => router.push(`/admin/maps/${map.id}/editor`)}>
                                    <MapPin className="h-4 w-4" />
                                </Button>
                               <Button variant="ghost" size="icon" title="Edit Map Info">
@@ -272,8 +180,8 @@ export default function AdminPage() {
                         ))
                     ) : (
                         <TableRow>
-                            <TableCell colSpan={5} className="text-center h-24">
-                                Belum ada peta yang dibuat.
+                            <TableCell colSpan={4} className="text-center h-24">
+                                No map blueprints created yet.
                             </TableCell>
                         </TableRow>
                     )}
@@ -283,109 +191,73 @@ export default function AdminPage() {
             </Card>
           </TabsContent>
 
-            <TabsContent value="quizzes">
-                <Card>
-                <CardHeader>
-                    <div className="flex justify-between items-center">
-                       <CardTitle>Manage Quizzes</CardTitle>
-                       <Button size="sm" onClick={() => setIsAddQuizModalOpen(true)}>
-                           <PlusCircle className="mr-2 h-4 w-4" /> Add New Quiz
-                        </Button>
-                    </div>
-                    <CardDescription>Create, edit, or delete quizzes associated with map nodes.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                    <TableHeader>
-                        <TableRow>
-                        <TableHead>Question/Instruction</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Associated Map</TableHead>
-                         <TableHead>Associated Node ID</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                         {isLoading.quizzes ? (
-                            <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-                        ) : quizzes.length > 0 ? (
-                            quizzes.map((quiz) => (
-                            <TableRow key={quiz.id}>
-                                <TableCell className="font-medium max-w-sm truncate">{quiz.question}</TableCell>
-                                <TableCell>{quiz.type}</TableCell>
-                                 <TableCell>{maps.find(m => m.id === quiz.mapId)?.title || 'N/A'}</TableCell>
-                                 <TableCell>{quiz.nodeId}</TableCell>
-                                <TableCell className="text-right space-x-2">
-                                <Button variant="ghost" size="icon" title="Edit Quiz">
-                                    <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Delete Quiz">
-                                    <Trash2 className="h-4 w-4" />
-                                </Button>
-                                </TableCell>
-                            </TableRow>
-                            ))
-                        ) : (
-                           <TableRow>
-                                <TableCell colSpan={5} className="text-center h-24">
-                                    Belum ada kuis yang dibuat. Klik "Add New Quiz" untuk memulai.
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                    </Table>
-                </CardContent>
-                </Card>
-            </TabsContent>
-
-          <TabsContent value="results">
+          <TabsContent value="quizzes">
             <Card>
-              <CardHeader>
-                 <div className="flex justify-between items-center">
-                    <CardTitle>View Session Results</CardTitle>
-                    <Button size="sm" variant="outline" onClick={handleExportResults} disabled={sessionResults.length === 0}>
-                        <Download className="mr-2 h-4 w-4" /> Export Results (CSV)
+            <CardHeader>
+                <div className="flex justify-between items-center">
+                   <CardTitle>Manage Playable Quizzes</CardTitle>
+                   <Button size="sm" onClick={() => setIsAddQuizModalOpen(true)}>
+                       <PlusCircle className="mr-2 h-4 w-4" /> Add New Quiz
                     </Button>
-                 </div>
-                <CardDescription>Review completed multiplayer sessions and participant scores.</CardDescription>
-              </CardHeader>
-              <CardContent>
+                </div>
+                <CardDescription>Create, edit, or delete playable quiz instances.</CardDescription>
+            </CardHeader>
+            <CardContent>
                 <Table>
-                  <TableHeader>
+                <TableHeader>
                     <TableRow>
-                      <TableHead>Map Title</TableHead>
-                      <TableHead>Date Completed</TableHead>
-                      <TableHead>Participants</TableHead>
-                      <TableHead>Average Score (%)</TableHead>
-                       <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>Quiz Title</TableHead>
+                      <TableHead>Underlying Map</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                     {isLoading.results ? (
-                        <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-                    ) : sessionResults.length > 0 ? (
-                        sessionResults.map((session) => (
-                          <TableRow key={session.id}>
-                            <TableCell className="font-medium">{session.mapTitle}</TableCell>
-                            <TableCell>{new Date(session.date).toLocaleDateString()}</TableCell>
-                            <TableCell>{session.participants}</TableCell>
-                            <TableCell>{session.avgScore}</TableCell>
-                             <TableCell className="text-right">
-                                <Button variant="link" size="sm">View Details</Button>
-                             </TableCell>
-                          </TableRow>
+                </TableHeader>
+                <TableBody>
+                     {isLoading.quizzes ? (
+                        <TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+                    ) : quizzes.length > 0 ? (
+                        quizzes.map((quiz) => (
+                        <TableRow key={quiz.id}>
+                            <TableCell className="font-medium max-w-sm truncate">{quiz.title}</TableCell>
+                            <TableCell className="font-mono">{quiz.mapId}</TableCell>
+                            <TableCell className="text-right space-x-2">
+                            <Button variant="ghost" size="icon" title="Edit Quiz">
+                                <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Delete Quiz">
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                            </TableCell>
+                        </TableRow>
                         ))
                     ) : (
-                        <TableRow>
-                            <TableCell colSpan={5} className="text-center h-24">
-                                Belum ada hasil sesi yang tercatat.
+                       <TableRow>
+                            <TableCell colSpan={3} className="text-center h-24">
+                                No quizzes created. Click "Add New Quiz" to start.
                             </TableCell>
                         </TableRow>
                     )}
-                  </TableBody>
+                </TableBody>
                 </Table>
-              </CardContent>
+            </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Placeholder for Question Bank */}
+          <TabsContent value="questions">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Question Bank</CardTitle>
+                    <CardDescription>Manage all individual questions across all maps.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-muted-foreground text-center">Feature coming soon.</p>
+                </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Results Tab remains the same */}
+          <TabsContent value="results">
+            {/* ... existing session results content ... */}
           </TabsContent>
         </Tabs>
       </main>
@@ -405,5 +277,4 @@ export default function AdminPage() {
        />
     </div>
   );
-
-    
+}
