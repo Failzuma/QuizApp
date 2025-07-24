@@ -20,6 +20,15 @@ export interface NodeData {
     y: number | null;
 }
 
+// Define structure for obstacle data from API
+interface ObstacleData {
+    posX: number;
+    posY: number;
+    width: number;
+    height: number;
+}
+
+
 export default class MainScene extends Phaser.Scene {
   private player?: Phaser.Physics.Arcade.Sprite;
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -98,6 +107,10 @@ export default class MainScene extends Phaser.Scene {
                 this.load.image('default_background', '/assets/images/backgrounds/default_background.png');
             }
         });
+
+        // Preload obstacles data as a JSON file from our new API endpoint
+        this.load.json(`${this.mapId}_obstacles`, `/api/maps/${this.mapId}/obstacles`);
+
     } else {
          console.warn("[Phaser Scene] mapId missing during preload, attempting to load default background.");
         if (!this.textures.exists('default_background')) {
@@ -202,7 +215,7 @@ export default class MainScene extends Phaser.Scene {
     // Initialize obstacles group
     this.obstacles = this.physics.add.staticGroup();
 
-    // Call a method to setup map-specific obstacles
+    // Call a method to setup map-specific obstacles from the loaded JSON data
     this.setupObstacles();
 
     if (!this.textures.exists('player')) {
@@ -245,7 +258,9 @@ export default class MainScene extends Phaser.Scene {
     }
 
     // Add collision between player and obstacles
-    this.physics.add.collider(this.player, this.obstacles);
+    if (this.player) {
+      this.physics.add.collider(this.player, this.obstacles);
+    }
 
     this.physics.add.overlap(this.player, this.nodes, this.handleNodeOverlap, undefined, this);
 
@@ -272,31 +287,24 @@ export default class MainScene extends Phaser.Scene {
   
   // This is where you will define the collision areas for each map
   setupObstacles() {
-    if (!this.obstacles) return;
+    if (!this.obstacles || !this.mapId) return;
 
-    // Example for a hypothetical map with identifier 'school_map'
-    if (this.mapId === 'school_map') {
-        // Add an obstacle for a wall. new Phaser.Geom.Rectangle(x, y, width, height)
-        const wall = this.add.rectangle(100, 100, 500, 20); // x, y, width, height
-        this.obstacles.add(wall);
-        
-        // Add an obstacle for a table
-        const table = this.add.rectangle(250, 300, 150, 80);
-        this.obstacles.add(table);
+    const obstacleData: ObstacleData[] = this.cache.json.get(`${this.mapId}_obstacles`);
+
+    if (!obstacleData || !Array.isArray(obstacleData)) {
+      console.warn(`[Phaser Scene] No valid obstacle data found for map: ${this.mapId}`);
+      return;
     }
 
-    // Example for another map
-    if (this.mapId === 'restaurant_map') {
-        const counter = this.add.rectangle(0, 200, 300, 50);
-        this.obstacles.add(counter);
-    }
+    obstacleData.forEach(obs => {
+        const obstacleBody = this.add.rectangle(obs.posX, obs.posY, obs.width, obs.height);
+        // Position is from center, so adjust to be from top-left for the physics body
+        obstacleBody.setOrigin(0,0);
+        this.obstacles?.add(obstacleBody);
+        (obstacleBody.body as Phaser.Physics.Arcade.StaticBody).x = obs.posX;
+        (obstacleBody.body as Phaser.Physics.Arcade.StaticBody).y = obs.posY;
 
-    // By default, the obstacle bodies are not visible.
-    // To debug and see the collision boxes, you can add this line:
-    // this.physics.world.createDebugGraphic();
-    // this.obstacles.getChildren().forEach(obstacle => {
-    //   (obstacle.body as Phaser.Physics.Arcade.Body).debugShowBody = true;
-    // });
+    });
     
     console.log(`[Phaser Scene] Setup obstacles for map: ${this.mapId}. Total obstacles: ${this.obstacles.getLength()}`);
   }

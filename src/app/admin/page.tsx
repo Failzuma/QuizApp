@@ -12,6 +12,7 @@ import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users } fr
 import { AddQuizModal, QuizFormData } from '@/components/admin/AddQuizModal';
 import { AddMapModal } from '@/components/admin/AddMapModal';
 import { useToast } from "@/hooks/use-toast";
+import { useRouter } from 'next/navigation';
 
 // Define interfaces for our data
 interface AdminMap {
@@ -47,6 +48,7 @@ export default function AdminPage() {
   const [maps, setMaps] = React.useState<AdminMap[]>([]);
   const [sessionResults, setSessionResults] = React.useState<SessionResult[]>([]);
   const { toast } = useToast();
+  const router = useRouter();
 
     // TODO: Implement fetching data from API endpoints in useEffect hooks
     // React.useEffect(() => {
@@ -240,7 +242,7 @@ export default function AdminPage() {
                             <TableCell>{map.nodes}</TableCell>
                              <TableCell>{map.quizzes}</TableCell>
                             <TableCell className="text-right space-x-2">
-                               <Button variant="ghost" size="icon" title="Edit Map & Nodes">
+                               <Button variant="ghost" size="icon" title="Edit Map & Obstacles" onClick={() => router.push(`/admin/maps/${map.id}/editor`)}>
                                    <MapPin className="h-4 w-4" />
                                </Button>
                               <Button variant="ghost" size="icon" title="Edit Map Info">
