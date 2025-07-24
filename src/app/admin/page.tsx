@@ -12,33 +12,52 @@ import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users } fr
 import { AddQuizModal, QuizFormData } from '@/components/admin/AddQuizModal';
 import { useToast } from "@/hooks/use-toast";
 
-// Mock Data - Replace with actual data fetching later
-const mockMaps = [
-  { id: 'map1', title: 'English for IT - Vocabulary Basics', nodes: 15, quizzes: 10 },
-  { id: 'map2', title: 'Basic English Grammar - Tenses', nodes: 12, quizzes: 8 },
-  { id: 'map3', title: 'Networking Concepts Map', nodes: 20, quizzes: 15 },
-];
+// Define interfaces for our data
+interface AdminMap {
+  id: string;
+  title: string;
+  nodes: number;
+  quizzes: number;
+}
 
-const initialMockQuizzes = [
-    { id: 'q1', mapId: 'map1', nodeId: '1', question: 'What does CPU stand for?', type: 'Short Answer', options: [], correctAnswer: 'Central Processing Unit' },
-    { id: 'q2', mapId: 'map1', nodeId: '2', question: 'Match the term to its definition.', type: 'Matching', options: ['CPU:Central Processing Unit', 'RAM:Random Access Memory'], correctAnswer: 'N/A'},
-    { id: 'q3', mapId: 'map2', nodeId: '3', question: 'Choose the correct past tense verb.', type: 'Multiple Choice', options: ['go', 'went', 'gone', 'goes'], correctAnswer: 'went' },
-];
+interface AdminQuiz {
+    id: string;
+    mapId: string;
+    nodeId: string;
+    question: string;
+    type: string;
+    options: string[];
+    correctAnswer: string;
+}
 
-const mockSessionResults = [
-  { id: 'session1', mapTitle: 'English for IT - Vocabulary Basics', date: '2024-07-20', participants: 5, avgScore: 82 },
-  { id: 'session2', mapTitle: 'Basic English Grammar - Tenses', date: '2024-07-21', participants: 8, avgScore: 88 },
-];
+interface SessionResult {
+    id: string;
+    mapTitle: string;
+    date: string;
+    participants: number;
+    avgScore: number;
+}
+
 
 export default function AdminPage() {
   const [isAddQuizModalOpen, setIsAddQuizModalOpen] = React.useState(false);
-  const [quizzes, setQuizzes] = React.useState(initialMockQuizzes);
+  const [quizzes, setQuizzes] = React.useState<AdminQuiz[]>([]);
+  const [maps, setMaps] = React.useState<AdminMap[]>([]);
+  const [sessionResults, setSessionResults] = React.useState<SessionResult[]>([]);
   const { toast } = useToast();
+
+    // TODO: Implement fetching data from API endpoints in useEffect hooks
+    // React.useEffect(() => {
+    //   fetch('/api/maps/admin-summary').then(res => res.json()).then(setMaps);
+    //   fetch('/api/quizzes/all').then(res => res.json()).then(setQuizzes);
+    //   fetch('/api/sessions/results').then(res => res.json()).then(setSessionResults);
+    // }, []);
+
 
   const handleExportResults = () => {
       console.log("Exporting session results...");
       const headers = "Session ID,Map Title,Date,Participants,Average Score\n";
-      const csvContent = mockSessionResults.map(s =>
+      const csvContent = sessionResults.map(s =>
         `${s.id},"${s.mapTitle}",${s.date},${s.participants},${s.avgScore}`
       ).join("\n");
       const blob = new Blob([headers + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -64,11 +83,9 @@ export default function AdminPage() {
         return;
     }
 
-    // Convert string nodeId to number for the backend.
-    // NOTE: This assumes the form input for Node ID will be a number representing the actual database node_id.
     const payload = {
       ...data,
-      nodeId: data.nodeId // Assuming nodeId from form is the numeric ID as a string.
+      nodeId: data.nodeId
     };
 
     console.log('Sending new quiz data to API:', payload);
@@ -92,7 +109,7 @@ export default function AdminPage() {
             });
             // You might want to refresh the quiz list here from the DB
             // For now, we'll just add the new quiz to the local state for immediate UI update.
-            const newQuizForState = {
+            const newQuizForState: AdminQuiz = {
                 id: result.question.question_id.toString(), // use new ID from DB
                 mapId: data.mapId,
                 nodeId: data.nodeId,
@@ -155,24 +172,32 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {mockMaps.map((map) => (
-                      <TableRow key={map.id}>
-                        <TableCell className="font-medium">{map.title}</TableCell>
-                        <TableCell>{map.nodes}</TableCell>
-                         <TableCell>{map.quizzes}</TableCell>
-                        <TableCell className="text-right space-x-2">
-                           <Button variant="ghost" size="icon" title="Edit Map & Nodes">
-                               <MapPin className="h-4 w-4" />
-                           </Button>
-                          <Button variant="ghost" size="icon" title="Edit Map Info">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Delete Map">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {maps.length > 0 ? (
+                        maps.map((map) => (
+                          <TableRow key={map.id}>
+                            <TableCell className="font-medium">{map.title}</TableCell>
+                            <TableCell>{map.nodes}</TableCell>
+                             <TableCell>{map.quizzes}</TableCell>
+                            <TableCell className="text-right space-x-2">
+                               <Button variant="ghost" size="icon" title="Edit Map & Nodes">
+                                   <MapPin className="h-4 w-4" />
+                               </Button>
+                              <Button variant="ghost" size="icon" title="Edit Map Info">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Delete Map">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                    ) : (
+                        <TableRow>
+                            <TableCell colSpan={4} className="text-center h-24">
+                                Belum ada peta yang dibuat.
+                            </TableCell>
+                        </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -202,22 +227,30 @@ export default function AdminPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {quizzes.map((quiz) => (
-                        <TableRow key={quiz.id}>
-                            <TableCell className="font-medium max-w-sm truncate">{quiz.question}</TableCell>
-                            <TableCell>{quiz.type}</TableCell>
-                             <TableCell>{mockMaps.find(m => m.id === quiz.mapId)?.title || 'N/A'}</TableCell>
-                             <TableCell>{quiz.nodeId}</TableCell>
-                            <TableCell className="text-right space-x-2">
-                            <Button variant="ghost" size="icon" title="Edit Quiz">
-                                <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Delete Quiz">
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
-                            </TableCell>
-                        </TableRow>
-                        ))}
+                        {quizzes.length > 0 ? (
+                            quizzes.map((quiz) => (
+                            <TableRow key={quiz.id}>
+                                <TableCell className="font-medium max-w-sm truncate">{quiz.question}</TableCell>
+                                <TableCell>{quiz.type}</TableCell>
+                                 <TableCell>{maps.find(m => m.id === quiz.mapId)?.title || 'N/A'}</TableCell>
+                                 <TableCell>{quiz.nodeId}</TableCell>
+                                <TableCell className="text-right space-x-2">
+                                <Button variant="ghost" size="icon" title="Edit Quiz">
+                                    <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Delete Quiz">
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                                </TableCell>
+                            </TableRow>
+                            ))
+                        ) : (
+                           <TableRow>
+                                <TableCell colSpan={5} className="text-center h-24">
+                                    Belum ada kuis yang dibuat. Klik "Add New Quiz" untuk memulai.
+                                </TableCell>
+                            </TableRow>
+                        )}
                     </TableBody>
                     </Table>
                 </CardContent>
@@ -229,7 +262,7 @@ export default function AdminPage() {
               <CardHeader>
                  <div className="flex justify-between items-center">
                     <CardTitle>View Session Results</CardTitle>
-                    <Button size="sm" variant="outline" onClick={handleExportResults}>
+                    <Button size="sm" variant="outline" onClick={handleExportResults} disabled={sessionResults.length === 0}>
                         <Download className="mr-2 h-4 w-4" /> Export Results (CSV)
                     </Button>
                  </div>
@@ -247,17 +280,25 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {mockSessionResults.map((session) => (
-                      <TableRow key={session.id}>
-                        <TableCell className="font-medium">{session.mapTitle}</TableCell>
-                        <TableCell>{new Date(session.date).toLocaleDateString()}</TableCell>
-                        <TableCell>{session.participants}</TableCell>
-                        <TableCell>{session.avgScore}</TableCell>
-                         <TableCell className="text-right">
-                            <Button variant="link" size="sm">View Details</Button>
-                         </TableCell>
-                      </TableRow>
-                    ))}
+                    {sessionResults.length > 0 ? (
+                        sessionResults.map((session) => (
+                          <TableRow key={session.id}>
+                            <TableCell className="font-medium">{session.mapTitle}</TableCell>
+                            <TableCell>{new Date(session.date).toLocaleDateString()}</TableCell>
+                            <TableCell>{session.participants}</TableCell>
+                            <TableCell>{session.avgScore}</TableCell>
+                             <TableCell className="text-right">
+                                <Button variant="link" size="sm">View Details</Button>
+                             </TableCell>
+                          </TableRow>
+                        ))
+                    ) : (
+                        <TableRow>
+                            <TableCell colSpan={5} className="text-center h-24">
+                                Belum ada hasil sesi yang tercatat.
+                            </TableCell>
+                        </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -271,7 +312,7 @@ export default function AdminPage() {
           isOpen={isAddQuizModalOpen}
           onClose={() => setIsAddQuizModalOpen(false)}
           onSubmit={handleAddQuiz}
-          availableMaps={mockMaps}
+          availableMaps={maps}
        />
     </div>
   );
