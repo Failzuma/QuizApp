@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users } from 'lucide-react';
+import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users, Loader2 } from 'lucide-react';
 import { AddQuizModal, QuizFormData } from '@/components/admin/AddQuizModal';
 import { AddMapModal, MapBlueprintFormData } from '@/components/admin/AddMapModal';
 import { useToast } from "@/hooks/use-toast";
@@ -47,15 +47,29 @@ export default function AdminPage() {
   const [quizzes, setQuizzes] = React.useState<AdminQuiz[]>([]);
   const [maps, setMaps] = React.useState<AdminMap[]>([]);
   const [sessionResults, setSessionResults] = React.useState<SessionResult[]>([]);
+  const [isLoading, setIsLoading] = React.useState({ maps: true, quizzes: true, results: true });
   const { toast } = useToast();
   const router = useRouter();
 
-    // TODO: Implement fetching data from API endpoints in useEffect hooks
-    // React.useEffect(() => {
-    //   fetch('/api/maps/admin-summary').then(res => res.json()).then(setMaps);
-    //   fetch('/api/quizzes/all').then(res => res.json()).then(setQuizzes);
-    //   fetch('/api/sessions/results').then(res => res.json()).then(setSessionResults);
-    // }, []);
+    React.useEffect(() => {
+      // NOTE: API endpoints for these do not exist yet. This is placeholder for future implementation.
+      // For now, it will correctly show the "no data" message.
+      
+      // Fetch Maps
+      // setIsLoading(prev => ({ ...prev, maps: true }));
+      // fetch('/api/maps/admin-summary').then(res => res.json()).then(setMaps).finally(() => setIsLoading(prev => ({...prev, maps: false})));
+      setIsLoading(prev => ({...prev, maps: false})); // Mock loading finished
+
+      // Fetch Quizzes
+      // setIsLoading(prev => ({ ...prev, quizzes: true }));
+      // fetch('/api/quizzes/all').then(res => res.json()).then(setQuizzes).finally(() => setIsLoading(prev => ({...prev, quizzes: false})));
+      setIsLoading(prev => ({...prev, quizzes: false})); // Mock loading finished
+
+      // Fetch Session Results
+      // setIsLoading(prev => ({ ...prev, results: true }));
+      // fetch('/api/sessions/results').then(res => res.json()).then(setSessionResults).finally(() => setIsLoading(prev => ({...prev, results: false})));
+      setIsLoading(prev => ({...prev, results: false})); // Mock loading finished
+    }, []);
 
 
   const handleExportResults = () => {
@@ -234,7 +248,9 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {maps.length > 0 ? (
+                    {isLoading.maps ? (
+                        <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+                    ) : maps.length > 0 ? (
                         maps.map((map) => (
                           <TableRow key={map.id}>
                             <TableCell className="font-medium">{map.title}</TableCell>
@@ -290,7 +306,9 @@ export default function AdminPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {quizzes.length > 0 ? (
+                         {isLoading.quizzes ? (
+                            <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+                        ) : quizzes.length > 0 ? (
                             quizzes.map((quiz) => (
                             <TableRow key={quiz.id}>
                                 <TableCell className="font-medium max-w-sm truncate">{quiz.question}</TableCell>
@@ -343,7 +361,9 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sessionResults.length > 0 ? (
+                     {isLoading.results ? (
+                        <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+                    ) : sessionResults.length > 0 ? (
                         sessionResults.map((session) => (
                           <TableRow key={session.id}>
                             <TableCell className="font-medium">{session.mapTitle}</TableCell>
@@ -385,4 +405,5 @@ export default function AdminPage() {
        />
     </div>
   );
-}
+
+    
