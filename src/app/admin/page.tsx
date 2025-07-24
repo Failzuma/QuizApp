@@ -85,13 +85,14 @@ export default function AdminPage() {
         return;
     }
     
-    // Prepare the payload for the new API structure
+    // Prepare the payload for the new API structure that accepts multiple nodes
     const payload = {
       mapIdentifier: data.mapIdentifier,
       title: data.title,
-      // Create one default node to start with. The UI can be expanded later to add more.
+      // For now, we create one default node. The UI can be expanded later to add more.
+      // The API is ready to handle up to 10 nodes.
       nodes: [
-        { title: 'Starting Node', content: 'This is the first node.', posX: 150, posY: 150 }
+        { title: 'Starting Point', content: 'This is the first node of the map.', posX: 150, posY: 150 }
       ]
     };
 
@@ -111,7 +112,7 @@ export default function AdminPage() {
         if (response.ok) {
             toast({
                 title: "Success!",
-                description: `Map '${result.map.title}' has been created.`,
+                description: `Map '${result.map.title}' has been created with ${result.map.nodes.length} node(s).`,
             });
             // Refetch or update local state
             const newMap: AdminMap = {
