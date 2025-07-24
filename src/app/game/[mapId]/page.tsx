@@ -1,103 +1,38 @@
 
-
 'use client';
 
 import React, { useEffect, useRef, useState, use, useMemo, useCallback } from 'react';
-// Phaser is dynamically imported within useEffect
-// import * as Phaser from 'phaser';
 import { Header } from '@/components/Header';
-// Footer removed to maximize game area
-// import { Footer } from '@/components/Footer';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'; // Added CardDescription
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input'; // Import Input component
-import { X, Trophy, CheckSquare, Eye, EyeOff, PanelTopClose, PanelTopOpen, ZoomIn, ZoomOut, Target } from 'lucide-react'; // Added UI toggle, zoom icons, Target
-import type MainSceneType from '@/game/scenes/MainScene'; // Import the type only
-import type { NodeInteractionCallback, NodesCountCallback } from '@/game/scenes/MainScene'; // Import the types only
-import { useToast } from "@/hooks/use-toast"; // Import useToast
-import { useIsMobile } from "@/hooks/use-mobile"; // Import useIsMobile hook
-import type nipplejs from 'nipplejs'; // Import nipplejs type only for type checking
+import { Input } from '@/components/ui/input';
+import { X, Trophy, CheckSquare, Eye, EyeOff, PanelTopClose, PanelTopOpen, ZoomIn, ZoomOut, Target, Loader2 } from 'lucide-react';
+import type MainSceneType from '@/game/scenes/MainScene';
+import type { NodeInteractionCallback, NodesCountCallback } from '@/game/scenes/MainScene';
+import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
+import type nipplejs from 'nipplejs';
 
-// --- Mock Data Structures (Simulating DB/API Data) ---
-
-interface QuizCollection {
-    id: string;
-    mapId: string;
-    title: string;
-    questionIds: string[]; // References questions below
-}
-
-// Represents individual questions
+// --- Dynamic Data Structures (from API) ---
 interface Question {
-    id: string;
-    quizId: string; // Link back to the collection
-    type: 'Multiple Choice' | 'Short Answer' | 'Matching' | 'Sequencing' | 'Drag & Drop' | 'Hotspot' | 'Scramble'; // Use literal types
-    question: string; // Can also be instruction
-    options?: string[]; // Optional, for MC, Matching, Sequencing, D&D items
-    correctAnswer: string; // Varies: Exact answer for MC/SA/Scramble, 'N/A' or structure for others
-    // No nodeId here directly, mapping is separate
+    question_id: number;
+    node_id: number;
+    question_text: string;
+    options: any; // JSON from DB, can be string[] or other structures
+    // Correct answer is NOT sent to client
 }
-
 
 // Represents the link between a map node and a specific question
-interface NodeQuestionMapping {
-    mapId: string;
-    nodeId: string; // ID of the node in Phaser
-    questionId: string; // ID of the question to trigger
-    nodeDescription: string; // Description for the quiz modal title
+// This will be constructed on the client-side
+interface ClientNodeMapping {
+    nodeId: string; // The string identifier used in Phaser (e.g., 'node_intro')
+    question: Question;
+    nodeDescription: string;
 }
 
-// --- Mock Data Implementation ---
 
-const mockQuizzesCollections: QuizCollection[] = [
-    { id: 'quiz_map1', mapId: 'map1', title: 'English for IT Basics', questionIds: ['q_map1_1', 'q_map1_2', 'q_map1_dd', 'q_map1_sc'] },
-    { id: 'quiz_map2', mapId: 'map2', title: 'Grammar Tenses', questionIds: ['q_map2_1', 'q_map2_seq'] },
-    { id: 'quiz_map3', mapId: 'map3', title: 'Networking Concepts', questionIds: ['q_map3_1', 'q_map3_match', 'q_map3_hot'] }, // Added for map3
-    // Add more quiz collections as needed
-];
-
-const mockAllQuestions: Question[] = [
-    // Questions for map1
-    { id: 'q_map1_1', quizId: 'quiz_map1', type: 'Multiple Choice', question: 'Which HTML tag is used for the largest heading?', options: ['<h1>', '<h6>', '<head>', '<p>'], correctAnswer: '<h1>' },
-    { id: 'q_map1_2', quizId: 'quiz_map1', type: 'Short Answer', question: 'What does CSS stand for?', correctAnswer: 'Cascading Style Sheets' },
-    { id: 'q_map1_dd', quizId: 'quiz_map1', type: 'Drag & Drop', question: 'Drag the term to its category.', options: ['CPU', 'Monitor', 'Keyboard', 'Hardware', 'Software'], correctAnswer: 'N/A' }, // Example D&D
-    { id: 'q_map1_sc', quizId: 'quiz_map1', type: 'Scramble', question: 'tmhleset', correctAnswer: 'stylesheet' }, // Example Scramble
-
-    // Questions for map2
-    { id: 'q_map2_1', quizId: 'quiz_map2', type: 'Multiple Choice', question: 'Choose the correct past tense of "go".', options: ['go', 'went', 'gone', 'goes'], correctAnswer: 'went' },
-    { id: 'q_map2_seq', quizId: 'quiz_map2', type: 'Sequencing', question: 'Order the steps to boot a computer.', options: ['Press Power Button', 'OS Loads', 'Login Screen Appears'], correctAnswer: 'N/A' }, // Example Sequencing
-
-    // Questions for map3
-    { id: 'q_map3_1', quizId: 'quiz_map3', type: 'Short Answer', question: 'What does LAN stand for?', correctAnswer: 'Local Area Network'},
-    { id: 'q_map3_match', quizId: 'quiz_map3', type: 'Matching', question: 'Match the protocol to its default port.', options: ['HTTP:80', 'HTTPS:443', 'FTP:21'], correctAnswer: 'N/A'}, // Example Matching
-    { id: 'q_map3_hot', quizId: 'quiz_map3', type: 'Hotspot', question: 'Click on the WAN port of the router image.', options: [], correctAnswer: 'N/A' }, // Example Hotspot
-    // Add more questions
-];
-
-
-const mockNodeQuestionMappings: NodeQuestionMapping[] = [
-    // Map 1 nodes
-    { mapId: 'map1', nodeId: 'node_html_heading', questionId: 'q_map1_1', nodeDescription: 'HTML Heading Node' },
-    { mapId: 'map1', nodeId: 'node_css_acronym', questionId: 'q_map1_2', nodeDescription: 'CSS Acronym Node' },
-    { mapId: 'map1', nodeId: 'node_drag_drop', questionId: 'q_map1_dd', nodeDescription: 'Hardware/Software Sort' },
-    { mapId: 'map1', nodeId: 'node_scramble', questionId: 'q_map1_sc', nodeDescription: 'Unscramble Term' },
-
-    // Map 2 nodes
-    { mapId: 'map2', nodeId: 'node_tense_go', questionId: 'q_map2_1', nodeDescription: 'Past Tense Node (Go)' },
-    { mapId: 'map2', nodeId: 'node_boot_sequence', questionId: 'q_map2_seq', nodeDescription: 'Boot Sequence' },
-
-    // Map 3 nodes
-    { mapId: 'map3', nodeId: 'node_lan', questionId: 'q_map3_1', nodeDescription: 'LAN Acronym Node'},
-    { mapId: 'map3', nodeId: 'node_ports_match', questionId: 'q_map3_match', nodeDescription: 'Port Matching' },
-    { mapId: 'map3', nodeId: 'node_wan_hotspot', questionId: 'q_map3_hot', nodeDescription: 'Router WAN Port' },
-    // Add more mappings
-];
-
-// --- End Mock Data ---
-
-
-// Mock Data - Players (Keep as is for now)
+// --- Mock Data (Players only, quiz data is now dynamic) ---
 const mockPlayers = [
   { id: 'player1', name: 'Player One', score: 150, avatar: 'https://picsum.photos/seed/player1/40/40' },
   { id: 'player2', name: 'You', score: 120, avatar: 'https://picsum.photos/seed/you/40/40' },
@@ -105,723 +40,355 @@ const mockPlayers = [
   { id: 'player4', name: 'Another User', score: 75, avatar: 'https://picsum.photos/seed/user4/40/40' },
 ];
 
+// --- MAIN COMPONENT ---
 export default function GamePage({ params }: { params: Promise<{ mapId: string }> }) {
-  const resolvedParams = use(params); // Use React.use to resolve the promise
-  const [players, setPlayers] = useState(mockPlayers); // Initial players, sorting done via useMemo
+  const resolvedParams = use(params);
+  const { toast } = useToast();
+  const isMobile = useIsMobile();
+
+  // --- State ---
+  const [players, setPlayers] = useState(mockPlayers);
   const [showQuiz, setShowQuiz] = useState(false);
-  const [currentQuizData, setCurrentQuizData] = useState<{ question: Question; nodeDescription: string; } | null>(null); // Holds the full Question object and node description
-  const [currentQuizNodeId, setCurrentQuizNodeId] = useState<string | null>(null); // Store nodeId when quiz opens
-  const [shortAnswerValue, setShortAnswerValue] = useState(''); // State for short answer input
-  const [remainingNodesCount, setRemainingNodesCount] = useState<number | null>(null); // State for remaining nodes
-  const [showNodeCount, setShowNodeCount] = useState(true); // State to control node count visibility
-  const [isUIVisible, setIsUIVisible] = useState(true); // State to control overall UI visibility
+  const [currentQuizData, setCurrentQuizData] = useState<ClientNodeMapping | null>(null);
+  const [shortAnswerValue, setShortAnswerValue] = useState('');
+  const [remainingNodesCount, setRemainingNodesCount] = useState<number | null>(null);
+  const [showNodeCount, setShowNodeCount] = useState(true);
+  const [isUIVisible, setIsUIVisible] = useState(true);
+  const [phaserInitialized, setPhaserInitialized] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentMapTitle, setCurrentMapTitle] = useState<string>('Loading...');
+  const [clientNodeMappings, setClientNodeMappings] = useState<ClientNodeMapping[]>([]);
+
+  // --- Refs ---
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
-  const sceneInstanceRef = useRef<MainSceneType | null>(null); // Use the imported type
-  const { toast } = useToast(); // Initialize toast
-  const shortAnswerInputRef = useRef<HTMLInputElement>(null); // Ref for short answer input
-  const isMobile = useIsMobile(); // Check if mobile device
+  const sceneInstanceRef = useRef<MainSceneType | null>(null);
+  const shortAnswerInputRef = useRef<HTMLInputElement>(null);
   const joystickManagerRef = useRef<nipplejs.JoystickManager | null>(null);
-  const joystickZoneRef = useRef<HTMLDivElement>(null); // Ref for the joystick container
-  // State to ensure Phaser initialization runs only once after mapId is resolved
-  const [phaserInitialized, setPhaserInitialized] = useState(false);
+  const joystickZoneRef = useRef<HTMLDivElement>(null);
 
-
-  // State for map-specific data
-  const [currentMapQuestions, setCurrentMapQuestions] = useState<Question[]>([]);
-  const [currentNodeMappings, setCurrentNodeMappings] = useState<NodeQuestionMapping[]>([]);
-  const [currentMapTitle, setCurrentMapTitle] = useState<string>('Loading...');
-
-   // Effect to load map-specific data when mapId changes
+  // --- Data Fetching Effect ---
    useEffect(() => {
-       if (resolvedParams?.mapId) {
+       const fetchAndSetupQuizData = async () => {
+           if (!resolvedParams?.mapId) {
+                console.warn("[React] mapId not available for data fetching.");
+                return;
+           }
            const mapId = resolvedParams.mapId;
            console.log(`[React] Loading data for mapId: ${mapId}`);
+           setIsLoading(true);
 
-           // 1. Find the Quiz Collection for this map
-           const quizCollection = mockQuizzesCollections.find(qc => qc.mapId === mapId);
-           setCurrentMapTitle(quizCollection?.title || `Map: ${decodeURIComponent(mapId)}`);
+           try {
+                const response = await fetch(`/api/maps/${mapId}/quizzes`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch quizzes: ${response.statusText}`);
+                }
+                const questionsFromApi: Question[] = await response.json();
+                console.log(`[React] Fetched ${questionsFromApi.length} questions for map ${mapId}.`);
 
-           // 2. Filter Questions belonging to this map's quiz collection
-           const questionIdsForMap = quizCollection?.questionIds || [];
-           const questions = mockAllQuestions.filter(q => questionIdsForMap.includes(q.id));
-           setCurrentMapQuestions(questions);
-           console.log(`[React] Found ${questions.length} questions for map ${mapId}`);
+                // TODO: This is a critical point. The client needs to map the numeric `node_id` from the questions
+                // to the string-based `nodeId` used in the Phaser scene (e.g., 'node_intro').
+                // This mapping should ideally come from the database or another API call.
+                // For this prototype, we will create a DUMMY MAPPING.
+                const dummyMappings = questionsFromApi.map((q, index) => ({
+                    nodeId: `node_${q.node_id}`, // e.g., 'node_1', 'node_2'
+                    question: q,
+                    nodeDescription: `Quiz Node ${q.node_id}`
+                }));
 
-           // 3. Filter Node Mappings for this map
-           const mappings = mockNodeQuestionMappings.filter(nm => nm.mapId === mapId);
-           setCurrentNodeMappings(mappings);
-           console.log(`[React] Found ${mappings.length} node mappings for map ${mapId}`);
+                setClientNodeMappings(dummyMappings);
+                setCurrentMapTitle(`Map: ${decodeURIComponent(mapId)}`); // Update title
+                setRemainingNodesCount(dummyMappings.length); // Set initial count
 
-           // Pass node data to Phaser scene (if scene is ready)
-           if (sceneInstanceRef.current) {
-               sceneInstanceRef.current.setupNodes(mappings.map(m => ({ nodeId: m.nodeId, x: 0, y: 0 }))); // Pass node IDs (adjust x/y if needed)
-               setRemainingNodesCount(mappings.length); // Initial count
-           } else {
-               // If scene isn't ready yet, initial count might be set later in postBoot or initScene
-                setRemainingNodesCount(mappings.length);
-               console.warn("[React] Scene instance not ready when map data loaded. Node setup might be delayed.");
+                // Pass node data to Phaser scene
+                if (sceneInstanceRef.current) {
+                    const nodeSetupData = dummyMappings.map(m => ({ nodeId: m.nodeId }));
+                    sceneInstanceRef.current.setupNodes(nodeSetupData);
+                } else {
+                     console.warn("[React] Scene instance not ready when map data loaded. Node setup might be delayed.");
+                }
+                setPhaserInitialized(false); // Allow re-init if map changes
+
+           } catch (error) {
+                console.error("[React] Error fetching quiz data:", error);
+                toast({ title: "Failed to load map data", description: "Please try again later.", variant: "destructive" });
+           } finally {
+                setIsLoading(false);
            }
-            // Allow Phaser initialization now that data is loaded
-            setPhaserInitialized(false); // Reset flag to allow re-init if map changes
+       };
 
+       fetchAndSetupQuizData();
+   }, [resolvedParams?.mapId, toast]);
 
-       } else {
-            console.warn("[React] mapId not available yet for data loading.");
-            setCurrentMapTitle('Map Loading...');
-            setCurrentMapQuestions([]);
-            setCurrentNodeMappings([]);
-            setRemainingNodesCount(null);
-       }
-   }, [resolvedParams?.mapId]); // Dependency on resolved mapId
-
-
-  // Callback function for Phaser scene to trigger quiz (using useCallback)
+  // --- Callbacks for Phaser ---
   const handleNodeInteraction: NodeInteractionCallback = useCallback((nodeId) => {
-    console.log(`[React] Received interaction from node: ${nodeId}`);
-
-    // Find the mapping for this nodeId on the current map
-    const mapping = currentNodeMappings.find(nm => nm.nodeId === nodeId);
+    console.log(`[React] Interaction from node: ${nodeId}`);
+    const mapping = clientNodeMappings.find(m => m.nodeId === nodeId);
 
     if (mapping) {
-        // Find the actual question data using the questionId from the mapping
-        const questionData = currentMapQuestions.find(q => q.id === mapping.questionId);
-
-        if (questionData) {
-            setCurrentQuizData({ question: questionData, nodeDescription: mapping.nodeDescription });
-            setCurrentQuizNodeId(nodeId); // Store the nodeId associated with this quiz
-            setShowQuiz(true);
-            setShortAnswerValue(''); // Clear previous short answer
-
-            // --- CRITICAL: Disable Phaser player input when quiz opens ---
-            console.log("[React] Disabling player input for quiz.");
-            sceneInstanceRef.current?.disablePlayerInput();
-            // --- Highlight the node in Phaser ---
-            sceneInstanceRef.current?.highlightNode(nodeId);
-
-            // Focus the input field shortly after the modal appears for short answers
-            if (questionData.type === 'Short Answer') {
-                 setTimeout(() => shortAnswerInputRef.current?.focus(), 100);
-            }
-        } else {
-            console.warn(`[React] Question data not found for questionId: ${mapping.questionId} (linked to nodeId: ${nodeId})`);
-            // Handle missing question data - maybe re-enable node?
-             reEnableNode(nodeId); // Use standalone function
-             console.log("[React] Enabling player input as question data was not found.");
-             sceneInstanceRef.current?.enablePlayerInput();
-             sceneInstanceRef.current?.clearNodeHighlight(nodeId);
+        setCurrentQuizData(mapping);
+        setShowQuiz(true);
+        setShortAnswerValue('');
+        sceneInstanceRef.current?.disablePlayerInput();
+        sceneInstanceRef.current?.highlightNode(nodeId);
+        if (mapping.question.options?.type === 'Short Answer') {
+             setTimeout(() => shortAnswerInputRef.current?.focus(), 100);
         }
     } else {
-        console.warn(`[React] No node mapping found for nodeId: ${nodeId} on map ${resolvedParams?.mapId}`);
-        // If no mapping, re-enable node and player input
-        reEnableNode(nodeId); // Use standalone function
-        console.log("[React] Enabling player input as no node mapping was found.");
+        console.warn(`[React] No mapping found for nodeId: ${nodeId}`);
+        reEnableNode(nodeId);
         sceneInstanceRef.current?.enablePlayerInput();
         sceneInstanceRef.current?.clearNodeHighlight(nodeId);
     }
-    // Ensure dependencies are minimal and stable
-  }, [currentNodeMappings, currentMapQuestions, resolvedParams?.mapId]);
+  }, [clientNodeMappings]);
 
-  // Callback function for Phaser scene to update node count (using useCallback)
   const handleNodesCountUpdate: NodesCountCallback = useCallback((count) => {
-      // console.log(`[React] Received nodes count update: ${count}`); // Can be noisy
       setRemainingNodesCount(count);
-  }, []); // No dependencies needed as it only calls setRemainingNodesCount
+  }, []);
 
-
-  // Function to signal Phaser to remove a node (using useCallback)
   const removeNode = useCallback((nodeId: string) => {
-    // Ensure scene instance is available before calling method
-    console.log(`[React] Requesting removal of node: ${nodeId}`);
-    if (sceneInstanceRef.current && typeof sceneInstanceRef.current.removeNode === 'function') {
+    if (sceneInstanceRef.current?.removeNode) {
         sceneInstanceRef.current.removeNode(nodeId);
-    } else {
-        console.warn("[React] Scene instance ref not set or removeNode not available, cannot remove node.");
     }
-  }, []); // No dependencies, sceneInstanceRef changes don't require recreating this function
+  }, []);
 
-  // Function to signal Phaser to re-enable a node (using useCallback)
   const reEnableNode = useCallback((nodeId: string) => {
-        console.log(`[React] Requesting re-enable of node: ${nodeId}`);
-       if (sceneInstanceRef.current && typeof sceneInstanceRef.current.reEnableNode === 'function') {
+       if (sceneInstanceRef.current?.reEnableNode) {
            sceneInstanceRef.current.reEnableNode(nodeId);
-           sceneInstanceRef.current.clearNodeHighlight(nodeId); // Also clear highlight
-       } else {
-           console.warn("[React] Scene instance ref not set or reEnableNode not available, cannot re-enable node.");
+           sceneInstanceRef.current.clearNodeHighlight(nodeId);
        }
-   }, []); // No dependencies
+   }, []);
 
-    // Function to signal Phaser to start cooldown (using useCallback)
     const startInteractionCooldown = useCallback((duration: number) => {
-        console.log(`[React] Requesting interaction cooldown start: ${duration}ms`);
-        if (sceneInstanceRef.current && typeof sceneInstanceRef.current.startInteractionCooldown === 'function') {
+        if (sceneInstanceRef.current?.startInteractionCooldown) {
             sceneInstanceRef.current.startInteractionCooldown(duration);
-        } else {
-            console.warn("[React] Scene instance ref not set or startInteractionCooldown not available.");
         }
-    }, []); // No dependencies
+    }, []);
 
 
-  // Initialize Phaser Game
+  // --- Phaser Game Initialization ---
    useEffect(() => {
         let game: Phaser.Game | null = null;
-
         const initPhaser = async () => {
-            // Ensure we have the mapId, node mappings, container, and haven't initialized already for this map
-            if (!resolvedParams?.mapId || currentNodeMappings.length === 0 || !gameContainerRef.current || phaserInitialized || gameInstanceRef.current) {
-              console.log("[Phaser Init] Skipping initialization: missing params, node mappings, container, or already initialized/exists.");
+            if (!resolvedParams?.mapId || clientNodeMappings.length === 0 || !gameContainerRef.current || phaserInitialized || gameInstanceRef.current) {
               return;
             }
-            console.log("[Phaser Init] Starting initialization...");
-            setPhaserInitialized(true); // Mark as initialized for this map load
+            setPhaserInitialized(true);
 
-            // Dynamically import Phaser and the Scene
             const Phaser = await import('phaser');
             const { default: MainScene } = await import('@/game/scenes/MainScene');
-
-            // Create the scene instance *before* the game config
             const mainSceneInstance = new MainScene();
 
             const config: Phaser.Types.Core.GameConfig = {
-              type: Phaser.AUTO, // Use AUTO to try WebGL first, then Canvas
+              type: Phaser.AUTO,
               parent: gameContainerRef.current,
-              // Use percentages or viewport units for parent container driven size
-              width: '100%', // Phaser will use the parent container's size with RESIZE mode
+              width: '100%',
               height: '100%',
-              physics: {
-                default: 'arcade',
-                arcade: {
-                  gravity: { y: 0 },
-                   // debug: process.env.NODE_ENV === 'development' // Optional debug drawing
-                },
-              },
-              // Pass the scene *instance* here. Phaser will call its init, preload, create methods.
+              physics: { default: 'arcade', arcade: { gravity: { y: 0 } } },
               scene: mainSceneInstance,
-              // Ensure pixel art remains crisp
-              render: {
-                pixelArt: true,
-                antialias: false,
-              },
-              scale: {
-                  // Use RESIZE mode to allow the canvas to adapt to the container size
-                  mode: Phaser.Scale.RESIZE,
-                  autoCenter: Phaser.Scale.CENTER_BOTH, // Center the game canvas
-              },
-              input: {
-                keyboard: {
-                    // Prevent default browser behavior (like scrolling with spacebar)
-                    // ONLY if needed and handled carefully. Often not required.
-                    // capture: [ Phaser.Input.Keyboard.KeyCodes.SPACE ]
-                },
-                 // Enable touch input for mobile gestures
-                touch: true,
-              },
-              // Use postBoot to safely access the scene instance after Phaser setup
+              render: { pixelArt: true, antialias: false },
+              scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
+              input: { keyboard: {}, touch: true },
               callbacks: {
                 postBoot: (bootedGame) => {
-                   console.log("[Phaser Init] postBoot callback triggered.");
-                  // Access the scene instance using the key provided in its constructor (default is the class name)
-                  const scene = bootedGame.scene.getScene('MainScene') as MainSceneType; // Cast to the imported type
-                  if (scene) {
-                      // Initialize the scene with mapId, callbacks, AND NODE DATA after it's ready
-                      if (typeof scene.initScene === 'function') {
-                        console.log("[Phaser Init] Calling initScene with mapId, callbacks, and node mappings.");
-                        // Pass node mappings along with other data
-                        scene.initScene(
-                            { mapId: resolvedParams.mapId },
-                            handleNodeInteraction,
-                            handleNodesCountUpdate,
-                            // Pass node IDs and potentially initial positions if known
-                            // Adjust this based on how MainScene.ts expects node data
-                            currentNodeMappings.map(m => ({ nodeId: m.nodeId /*, x: ..., y: ... */ }))
-                        );
-                        sceneInstanceRef.current = scene; // Store the scene instance reference
-                        console.log("[Phaser Init] Scene initialized successfully in postBoot.");
-                        // Initial node count might be updated within initScene/create now
-                      } else {
-                        console.error("[Phaser Init] MainScene does not have an initScene method supporting node data.");
-                         sceneInstanceRef.current = scene;
-                         console.warn("[Phaser Init] Consider updating initScene in MainScene.ts to accept node data.");
-                      }
-
+                  const scene = bootedGame.scene.getScene('MainScene') as MainSceneType;
+                  if (scene?.initScene) {
+                    scene.initScene(
+                        { mapId: resolvedParams.mapId },
+                        handleNodeInteraction,
+                        handleNodesCountUpdate,
+                        clientNodeMappings.map(m => ({ nodeId: m.nodeId }))
+                    );
+                    sceneInstanceRef.current = scene;
                   } else {
-                      console.error("[Phaser Init] MainScene not found after boot. Ensure scene key matches.");
-                       // Attempt to get by index if key fails (less reliable)
-                       const sceneByIndex = bootedGame.scene.scenes[0];
-                       if (sceneByIndex instanceof MainScene && typeof sceneByIndex.initScene === 'function') {
-                           console.log("[Phaser Init] Found scene by index, calling initScene.");
-                           sceneByIndex.initScene(
-                               { mapId: resolvedParams.mapId },
-                               handleNodeInteraction,
-                               handleNodesCountUpdate,
-                               currentNodeMappings.map(m => ({ nodeId: m.nodeId }))
-                            );
-                           sceneInstanceRef.current = sceneByIndex;
-                           console.log("[Phaser Init] Scene initialized via index in postBoot.");
-                       } else {
-                          console.error("[Phaser Init] Could not get scene instance by key or index, or initScene missing/incorrect.");
-                       }
+                      console.error("[Phaser Init] MainScene or initScene method not found.");
                   }
                 }
               }
             };
-            console.log("[Phaser Init] Creating Phaser.Game instance.");
             try {
               game = new Phaser.Game(config);
               gameInstanceRef.current = game;
             } catch (error) {
                 console.error("[Phaser Init] Error creating Phaser Game instance:", error);
-                // Handle potential WebGL errors during creation
-                if (error instanceof Error && error.message.includes('WebGL')) {
-                    console.warn("[Phaser Init] WebGL context issue detected. Consider falling back to Canvas or checking device compatibility.");
-                    // Optionally, try forcing Canvas renderer here if applicable
-                }
-                setPhaserInitialized(false); // Allow trying again if needed
+                setPhaserInitialized(false);
             }
         }
-
-        // Check if window is defined (runs only on client-side)
-        if (typeof window !== 'undefined') {
-           console.log("[Phaser Init] Running on client, calling initPhaser.");
-           initPhaser();
-        } else {
-            console.log("[Phaser Init] Running on server or window undefined, skipping initPhaser.");
-        }
-
+        if (typeof window !== 'undefined') initPhaser();
 
         return () => {
-          console.log('[Phaser Cleanup] Destroying Phaser game instance...');
-           // Use a timeout to slightly delay destruction, potentially avoiding race conditions
-           // with other cleanup or state updates. Adjust delay if needed (or remove if causing issues).
           const destroyTimeout = setTimeout(() => {
-              if (gameInstanceRef.current && typeof gameInstanceRef.current.destroy === 'function') {
+              if (gameInstanceRef.current?.destroy) {
                   try {
-                    gameInstanceRef.current.destroy(true); // Pass true to remove canvas
-                    console.log('[Phaser Cleanup] Phaser game instance destroyed.');
+                    gameInstanceRef.current.destroy(true);
                   } catch (error) {
                       console.error('[Phaser Cleanup] Error during game destruction:', error);
                   } finally {
                      gameInstanceRef.current = null;
-                     sceneInstanceRef.current = null; // Clear scene ref
-                     setPhaserInitialized(false); // Reset init flag when component unmounts or map changes
+                     sceneInstanceRef.current = null;
+                     setPhaserInitialized(false);
                   }
-              } else {
-                   console.log('[Phaser Cleanup] Game instance already null or not destroyable.');
-                   gameInstanceRef.current = null; // Ensure it's null
-                   sceneInstanceRef.current = null;
-                   setPhaserInitialized(false);
               }
-          }, 50); // 50ms delay, adjust as needed
-
-          return () => clearTimeout(destroyTimeout); // Cleanup the timeout itself if component unmounts quickly
+          }, 50);
+          return () => clearTimeout(destroyTimeout);
         };
-      // Add resolvedParams AND currentNodeMappings to dependencies
-      // This ensures Phaser re-initializes if the map changes OR if the node data loads *after* the initial render
-      }, [resolvedParams?.mapId, currentNodeMappings, phaserInitialized, handleNodeInteraction, handleNodesCountUpdate]); // Added phaserInitialized and callbacks
+      }, [resolvedParams?.mapId, clientNodeMappings, phaserInitialized, handleNodeInteraction, handleNodesCountUpdate]);
 
-
-    // Initialize Joystick for mobile
+    // --- Joystick Initialization ---
      useEffect(() => {
         let manager: nipplejs.JoystickManager | null = null;
-
         const initJoystick = async () => {
-            // Check element exists, is in DOM, and not already initialized
             const zoneElement = joystickZoneRef.current;
-            // Ensure it runs only on client-side where document is defined
-             if (typeof document === 'undefined') {
-                console.log("[Joystick] Skipping initialization: document is not defined (server-side).");
-                return;
-             }
-
-             // Ensure zoneElement is truly in the DOM before creating nipplejs instance
             if (isMobile && zoneElement && document.body.contains(zoneElement) && !joystickManagerRef.current) {
-                console.log("[Joystick] Initializing joystick...");
-                // Dynamically import nipplejs
                 const nipplejs = (await import('nipplejs')).default;
-
                 try {
                     manager = nipplejs.create({
-                        zone: zoneElement, // The DOM element for the joystick area
-                        mode: 'dynamic', // Allows joystick to appear where finger touches
-                        position: { left: '50%', top: '50%' }, // Centered in the zone initially
-                        color: 'rgba(255, 255, 255, 0.5)', // Semi-transparent white
-                        size: 100, // Size of the joystick base
-                        threshold: 0.1, // Minimum distance threshold to trigger move
-                        fadeTime: 250, // Fade time for the joystick appearance
-                        multitouch: false, // Disable multitouch for simplicity with zoom
-                        restJoystick: true, // Return to center when released
-                        restOpacity: 0.5, // Opacity when idle
-                        shape: 'circle',
+                        zone: zoneElement, mode: 'dynamic', position: { left: '50%', top: '50%' },
+                        color: 'rgba(255, 255, 255, 0.5)', size: 100, threshold: 0.1, fadeTime: 250,
+                        multitouch: false, restJoystick: true, restOpacity: 0.5, shape: 'circle',
                     });
-
                     joystickManagerRef.current = manager;
-
-                    manager.on('start', (evt, data) => {
-                        // console.log("[Joystick] Start");
-                    });
-
                     manager.on('move', (evt, data) => {
-                        if (sceneInstanceRef.current?.joystickInput) {
-                             sceneInstanceRef.current.joystickInput(data);
-                         }
+                        if (sceneInstanceRef.current?.joystickInput) sceneInstanceRef.current.joystickInput(data);
                     });
-
                     manager.on('end', () => {
-                         // console.log("[Joystick End]");
-                         if (sceneInstanceRef.current?.joystickInput) {
-                            sceneInstanceRef.current.joystickInput({
-                                vector: { x: 0, y: 0 },
-                                force: 0,
-                                angle: { radian: 0, degree: 0 },
-                                direction: undefined,
-                            });
-                         }
+                         if (sceneInstanceRef.current?.joystickInput) sceneInstanceRef.current.joystickInput({ vector: { x: 0, y: 0 }, force: 0, angle: { radian: 0, degree: 0 }, direction: undefined });
                     });
-
-                     console.log("[Joystick] Joystick initialized.");
-                } catch (error) {
-                    console.error("[Joystick] Error creating joystick instance:", error);
-                    // Handle error, maybe display a message or fallback control
-                    if (error instanceof Error && error.message.includes('parentElement')) {
-                        console.error("[Joystick] Error likely due to zoneElement not being fully ready in the DOM. Retrying might help.");
-                        // Consider adding a small delay and retry logic here if this error persists
-                    } else if (error instanceof Error && error.message.includes("zone isn't part of DOM")) {
-                         console.error("[Joystick] Error: Zone element isn't part of DOM. Initialization failed.");
-                         // Potentially retry or log this specific failure
-                         joystickManagerRef.current = null; // Ensure ref is cleared if creation failed
-                    }
-                }
-
-            } else if (!isMobile && joystickManagerRef.current) {
-                 // Destroy joystick if not on mobile
-                 console.log("[Joystick] Not mobile, destroying joystick.");
-                 joystickManagerRef.current.destroy();
-                 joystickManagerRef.current = null;
-            } else if (isMobile && !zoneElement) {
-                console.warn("[Joystick] Cannot initialize: zone element ref is null.");
-            } else if (isMobile && zoneElement && !document.body.contains(zoneElement)) {
-                 console.warn("[Joystick] Cannot initialize: zone element found but not attached to the DOM yet.");
-                 // Try again shortly?
-                  setTimeout(initJoystick, 200); // Optional retry
+                } catch (error) { console.error("[Joystick] Error creating joystick instance:", error); }
             }
         };
-
-        // Only init if we are on the client and element is potentially ready
-        if (typeof window !== 'undefined') {
-            // Delay slightly to ensure DOM elements are mounted and layout is stable
-            const timeoutId = setTimeout(initJoystick, 150); // Increased delay slightly more
-             return () => clearTimeout(timeoutId); // Clear timeout if unmounting before execution
-        }
-
-
+        const timeoutId = setTimeout(initJoystick, 150);
         return () => {
+            clearTimeout(timeoutId);
             if (joystickManagerRef.current) {
-                console.log("[Joystick] Destroying joystick (cleanup)...");
-                try {
-                    joystickManagerRef.current.destroy();
-                } catch (error) {
-                     console.warn("[Joystick] Error destroying joystick:", error);
-                } finally {
-                     joystickManagerRef.current = null;
-                }
-
+                try { joystickManagerRef.current.destroy(); } catch (error) { console.warn("[Joystick] Error destroying joystick:", error); }
+                joystickManagerRef.current = null;
             }
         };
-     // Re-run only if isMobile changes, also check if zone ref changes (though less likely)
-     // Added dependency on joystickZoneRef.current to re-run if the ref itself changes.
-     }, [isMobile, joystickZoneRef.current]);
+     }, [isMobile]);
 
-    const submitShortAnswer = () => {
-        handleAnswerSubmit(shortAnswerValue);
-    }
+    // --- Answer Submission & UI Logic ---
+    const submitShortAnswer = () => handleAnswerSubmit(shortAnswerValue);
 
     const handleShortAnswerKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-        // Allow spacebar
-        if (event.key === ' ') {
-            // Default behavior is fine, no preventDefault needed usually
-             event.stopPropagation(); // Ensure space doesn't bubble up to Phaser if needed
-        }
-        // Submit on Enter
+        if (['w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(event.key)) event.stopPropagation();
         if (event.key === 'Enter') {
-            event.preventDefault(); // Prevent form submission if it's in a form
+            event.preventDefault();
             submitShortAnswer();
-        }
-        // Prevent WASD/Arrows from propagating to Phaser while typing
-        if (['w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
-             event.stopPropagation();
         }
     };
 
-    const handleAnswerSubmit = (selectedAnswer: string) => {
-      console.log(`[React] Answer submitted: "${selectedAnswer}". Current quiz node ID: ${currentQuizNodeId}`);
-      if (!currentQuizData?.question || !currentQuizNodeId) {
-          console.error("[React] Cannot submit answer: currentQuizData or currentQuizNodeId is null.");
-          return;
+    const handleAnswerSubmit = async (selectedAnswer: string) => {
+      if (!currentQuizData) return;
+      const nodeIdToRemove = currentQuizData.nodeId;
+      const token = localStorage.getItem('token');
+
+      try {
+        const response = await fetch('/api/quizzes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ question_id: currentQuizData.question.question_id, user_answer: selectedAnswer })
+        });
+        const result = await response.json();
+
+        toast({
+          title: result.is_correct ? "Correct!" : "Wrong!",
+          description: result.is_correct ? "Good job!" : `The correct answer was: ${result.correctAnswer}`,
+          variant: result.is_correct ? "default" : "destructive",
+        });
+
+        if (result.is_correct) {
+          setPlayers(prev => prev.map(p => p.name === 'You' ? { ...p, score: p.score + 10 } : p));
+        }
+
+      } catch (error) {
+         toast({ title: "Error", description: "Could not submit answer.", variant: "destructive"});
       }
 
-      // Capture nodeId before state potentially changes
-      const nodeIdToRemove = currentQuizNodeId;
-      const questionDetails = currentQuizData.question;
-
-      // --- Determine Correctness (logic might vary by question type) ---
-      let isCorrect = false;
-      switch (questionDetails.type) {
-          case 'Multiple Choice':
-          case 'Short Answer':
-          case 'Scramble':
-              isCorrect = selectedAnswer.trim().toLowerCase() === questionDetails.correctAnswer.toLowerCase();
-              break;
-          // TODO: Add correctness logic for Matching, Sequencing, Drag & Drop, Hotspot
-          // These might involve comparing arrays, coordinates, etc.
-          case 'Matching':
-          case 'Sequencing':
-          case 'Drag & Drop':
-          case 'Hotspot':
-              console.log(`[React] Correctness check for type "${questionDetails.type}" not yet implemented.`);
-              // For now, assume correct for testing UI flow
-              isCorrect = true; // Placeholder
-              break;
-          default:
-              console.warn(`[React] Unknown quiz type for correctness check: ${questionDetails.type}`);
-      }
-
-
-      // Display feedback toast
-      toast({
-          title: isCorrect ? "Correct!" : "Wrong!",
-          description: isCorrect ? "Good job!" : `The correct answer was: ${questionDetails.correctAnswer === 'N/A' ? '(Complex answer)' : questionDetails.correctAnswer}`,
-          variant: isCorrect ? "default" : "destructive", // Use default (usually green/blue) for correct, destructive (red) for wrong
-      });
-
-      // Update player score only if correct
-      if (isCorrect) {
-          console.log("[React] Answer Correct!");
-          setPlayers(prevPlayers => prevPlayers.map(p =>
-              p.name === 'You' ? { ...p, score: p.score + 10 } : p
-          )); // Sorting is handled by useMemo now
-      } else {
-          console.log("[React] Answer Incorrect!");
-          // No score update for wrong answers
-      }
-
-      // --- CRITICAL: Remove the node from Phaser REGARDLESS of the answer ---
-      // Ensure we have the nodeId captured before resetting state
-      if (nodeIdToRemove) {
-          removeNode(nodeIdToRemove);
-      } else {
-          console.error("[React] Could not remove node because nodeIdToRemove was null!");
-      }
-
-      // Hide quiz UI
+      if (nodeIdToRemove) removeNode(nodeIdToRemove);
       setShowQuiz(false);
+      sceneInstanceRef.current?.enablePlayerInput();
+      setCurrentQuizData(null);
+      setShortAnswerValue('');
+    };
 
-       // --- CRITICAL: Re-enable Phaser player input ---
-       console.log("[React] Re-enabling player input after quiz submission.");
-       sceneInstanceRef.current?.enablePlayerInput();
-
-       // Reset quiz state AFTER ensuring node removal was requested
-      setCurrentQuizData(null); // Reset full quiz data
-      setCurrentQuizNodeId(null); // Reset current node ID
-      setShortAnswerValue(''); // Clear short answer input
-  };
-
-  const closeQuiz = () => {
-      // Capture node ID before resetting
-      const nodeIdToReEnable = currentQuizNodeId;
-      console.log(`[React] Quiz closed without answering. Node to potentially re-enable: ${nodeIdToReEnable}`);
-
+    const closeQuiz = () => {
+      const nodeIdToReEnable = currentQuizData?.nodeId;
       setShowQuiz(false);
-
-      // If quiz is closed without answering, we need to re-enable the node
-      // and start the interaction cooldown.
-      if (nodeIdToReEnable && sceneInstanceRef.current) {
-         // Re-enable the node's physics body
-         reEnableNode(nodeIdToReEnable); // This now also clears highlight
-
-         // Start the interaction cooldown in Phaser
-         startInteractionCooldown(1500); // 1.5 seconds cooldown
-
-      } else {
-          console.warn("[React] Could not find node ID to re-enable/apply cooldown, or scene ref missing.");
+      if (nodeIdToReEnable) {
+         reEnableNode(nodeIdToReEnable);
+         startInteractionCooldown(1500);
       }
+      sceneInstanceRef.current?.enablePlayerInput();
+      setCurrentQuizData(null);
+      setShortAnswerValue('');
+    };
 
-        // --- CRITICAL: Re-enable Phaser player input ---
-       console.log("[React] Re-enabling player input after closing quiz.");
-       sceneInstanceRef.current?.enablePlayerInput();
+    const toggleUIVisibility = () => setIsUIVisible(p => !p);
+    const handleZoomIn = () => sceneInstanceRef.current?.zoomIn();
+    const handleZoomOut = () => sceneInstanceRef.current?.zoomOut();
 
-       // Reset quiz state
-      setCurrentQuizData(null); // Reset full quiz data
-      setCurrentQuizNodeId(null);
-      setShortAnswerValue(''); // Clear short answer input
-  }
+    const sortedPlayers = useMemo(() => [...players].sort((a, b) => b.score - a.score), [players]);
+    const showHeader = isMobile === undefined || !isMobile;
 
-  const toggleNodeCountVisibility = () => {
-    setShowNodeCount(prevState => !prevState);
-  }
-
-  const toggleUIVisibility = () => {
-      setIsUIVisible(prevState => !prevState);
-  }
-
-   // --- Zoom Button Handlers ---
-   const handleZoomIn = () => {
-    if (sceneInstanceRef.current?.zoomIn) {
-      sceneInstanceRef.current.zoomIn();
+    // --- Render Logic ---
+    if (isLoading) {
+        return (
+             <div className="flex flex-col h-screen items-center justify-center">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                <p className="mt-4 text-muted-foreground">Loading Map Data...</p>
+             </div>
+        )
     }
-  };
 
-  const handleZoomOut = () => {
-    if (sceneInstanceRef.current?.zoomOut) {
-      sceneInstanceRef.current.zoomOut();
-    }
-  };
-
-  // Determine if the header should be shown
-  // 'isMobile' might be undefined initially, so default to showing header until determined.
-  const showHeader = isMobile === undefined || !isMobile;
-
-   // Memoize the sorted player list to prevent re-sorting on every render
-   const sortedPlayers = useMemo(() => {
-       return [...players].sort((a, b) => b.score - a.score);
-   }, [players]);
-
-
-  return (
-    // Make the main container flex column and take full screen height minus header (if shown)
+    return (
     <div className="flex flex-col h-screen overflow-hidden">
-      {/* Conditionally render Header based on device type */}
       {showHeader && <Header />}
+      <main className="flex-grow relative">
+        <div ref={gameContainerRef} id="phaser-game-container" className="absolute inset-0 bg-muted border border-muted-foreground overflow-hidden" />
 
-      {/* Main content area takes up remaining space */}
-      <main className="flex-grow relative"> {/* Added relative positioning */}
-        {/* Game Area - Now takes up the majority of the space */}
-        <div
-          ref={gameContainerRef}
-          id="phaser-game-container"
-          // Use absolute positioning or flex-grow to fill the main area
-          className="absolute inset-0 bg-muted border border-muted-foreground overflow-hidden" // Fill parent 'main'
-        >
-          {/* Phaser canvas will be injected here */}
-        </div>
+         {isMobile && ( <div ref={joystickZoneRef} id="joystick-zone" className="absolute bottom-0 left-0 w-1/2 h-1/2 z-30 opacity-75" style={{ pointerEvents: isMobile && !showQuiz ? 'auto' : 'none' }} /> )}
 
-        {/* Mobile Joystick Area - Positioned over the game area */}
-         {isMobile && (
-            <div
-              ref={joystickZoneRef}
-              id="joystick-zone"
-              // Adjust positioning and size as needed. z-30 places it above game, below UI toggles/quiz.
-              // Use pointer-events-none to allow interaction with elements below (like the game canvas) when UI is hidden,
-              // but keep it visible.
-              className="absolute bottom-0 left-0 w-1/2 h-1/2 z-30 opacity-75"
-              // Pointer events logic:
-              // Allow pointer events if on mobile AND quiz is NOT showing.
-              // This ensures the joystick works whether the UI overlay is visible or not,
-              // but gets disabled when the quiz modal pops up.
-              style={{ pointerEvents: isMobile && !showQuiz ? 'auto' : 'none' }}
-            >
-              {/* Joystick will be created here by nipplejs dynamically */}
-            </div>
-         )}
-
-        {/* Top Right Control Bar (Contains UI Toggle & Zoom) - Positioned Above Other UI */}
-        <div className="absolute top-4 right-4 z-40 flex items-center gap-2"> {/* Use Z-40, higher than other overlays */}
-           {/* Zoom Buttons - Only shown if UI is visible */}
+        <div className="absolute top-4 right-4 z-40 flex items-center gap-2">
            {isUIVisible && (
              <>
-               <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleZoomIn}
-                  className="bg-background/70 backdrop-blur-sm text-primary hover:bg-background/90 shadow"
-                  title="Zoom In"
-               >
-                  <ZoomIn className="h-5 w-5" />
-               </Button>
-               <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleZoomOut}
-                  className="bg-background/70 backdrop-blur-sm text-primary hover:bg-background/90 shadow"
-                  title="Zoom Out"
-                >
-                  <ZoomOut className="h-5 w-5" />
-               </Button>
+               <Button variant="ghost" size="icon" onClick={handleZoomIn} className="bg-background/70 backdrop-blur-sm text-primary hover:bg-background/90 shadow" title="Zoom In"><ZoomIn className="h-5 w-5" /></Button>
+               <Button variant="ghost" size="icon" onClick={handleZoomOut} className="bg-background/70 backdrop-blur-sm text-primary hover:bg-background/90 shadow" title="Zoom Out"><ZoomOut className="h-5 w-5" /></Button>
              </>
            )}
-           {/* UI Toggle Button - Always visible */}
-           <Button
-               variant="ghost"
-               size="icon"
-               onClick={toggleUIVisibility}
-               className="bg-background/70 backdrop-blur-sm text-primary hover:bg-background/90 shadow"
-               title={isUIVisible ? "Hide UI" : "Show UI"}
-            >
+           <Button variant="ghost" size="icon" onClick={toggleUIVisibility} className="bg-background/70 backdrop-blur-sm text-primary hover:bg-background/90 shadow" title={isUIVisible ? "Hide UI" : "Show UI"}>
                {isUIVisible ? <PanelTopClose className="h-5 w-5" /> : <PanelTopOpen className="h-5 w-5" />}
            </Button>
         </div>
 
-         {/* Top-Left HUD Elements Container - Visibility controlled by isUIVisible */}
          {isUIVisible && (
-            <div className="absolute top-4 left-4 z-10 flex flex-col gap-4 w-full max-w-xs sm:max-w-sm md:max-w-md"> {/* Responsive width */}
-
-                {/* Map Details Overlay */}
+            <div className="absolute top-4 left-4 z-10 flex flex-col gap-4 w-full max-w-xs sm:max-w-sm">
                 <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
-                <h1 className="text-lg font-bold text-primary truncate">{currentMapTitle}</h1> {/* Truncate long titles */}
-                <p className="text-xs text-muted-foreground">Room Code: <span className="font-mono bg-muted px-1 py-0.5 rounded">XYZ123</span></p>
+                    <h1 className="text-lg font-bold text-primary truncate">{currentMapTitle}</h1>
+                    <p className="text-xs text-muted-foreground">Room Code: <span className="font-mono bg-muted px-1 py-0.5 rounded">XYZ123</span></p>
                 </div>
-
-                {/* Node Count and Toggle Button Overlay */}
-                <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow flex flex-col items-start gap-2"> {/* items-start to align content left */}
-                    {/* Node Count Display */}
-                    {showNodeCount && (
-                        <div className="flex items-center gap-2">
-                            <CheckSquare className="h-5 w-5 text-primary" />
-                            <span className="text-sm font-medium">Nodes Remaining:</span>
-                            <span className="font-bold text-lg text-primary">
-                                {remainingNodesCount !== null ? remainingNodesCount : '--'}
-                            </span>
-                        </div>
-                    )}
-                    {/* Show/Hide Node Count Button */}
-                    <Button
-                        variant="ghost"
-                        size="sm" // Make button smaller
-                        onClick={toggleNodeCountVisibility}
-                        className="w-full text-primary hover:bg-background/90 flex items-center justify-center gap-1" // Removed mt-1 as gap handles spacing
-                        title={showNodeCount ? "Hide Node Count" : "Show Node Count"}
-                        >
-                        {showNodeCount ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        <span className="text-xs">{showNodeCount ? "Hide" : "Show"} Count</span>
-                    </Button>
+                <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <CheckSquare className="h-5 w-5 text-primary" />
+                        <span className="text-sm font-medium">Nodes Remaining:</span>
+                    </div>
+                    <span className="font-bold text-lg text-primary">{remainingNodesCount ?? '--'}</span>
                 </div>
-
             </div>
          )}
 
-
-        {/* Sidebar - Leaderboard as HUD Overlay - Visibility controlled by isUIVisible */}
         {isUIVisible && (
-            // Adjust position and size for responsiveness
-            <div className="absolute top-16 right-4 z-10 w-48 sm:w-56 md:w-64"> {/* Responsive width */}
-                <Card className="bg-background/70 backdrop-blur-sm shadow-lg border-primary/50"> {/* Semi-transparent HUD */}
-                <CardHeader className="p-2 sm:p-3"> {/* Adjusted padding */}
-                    <CardTitle className="text-sm sm:text-base flex items-center gap-1 sm:gap-2"> {/* Responsive text/gap */}
-                    <Trophy className="h-3 w-3 sm:h-4 sm:w-4 text-primary" /> Leaderboard
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0"> {/* Remove padding to let ScrollArea handle it */}
-                    {/* Adjust height */}
-                    {/* Using ScrollArea caused infinite loop, replaced with simple div + overflow */}
+            <div className="absolute top-16 right-4 z-10 w-48 sm:w-56 md:w-64">
+                <Card className="bg-background/70 backdrop-blur-sm shadow-lg border-primary/50">
+                <CardHeader className="p-2 sm:p-3"><CardTitle className="text-sm sm:text-base flex items-center gap-1 sm:gap-2"><Trophy className="h-3 w-3 sm:h-4 sm:w-4 text-primary" /> Leaderboard</CardTitle></CardHeader>
+                <CardContent className="p-0">
                     <div className="h-48 sm:h-60 overflow-y-auto px-2 sm:px-3 pb-2 sm:pb-3">
-                        <ul className="space-y-1.5 sm:space-y-2"> {/* Responsive spacing */}
+                        <ul className="space-y-1.5 sm:space-y-2">
                             {sortedPlayers.map((player, index) => (
-                            <li key={player.id} className="flex items-center justify-between p-1 sm:p-1.5 rounded text-xs hover:bg-secondary/80 transition-colors"> {/* Smaller text, padding */}
-                                <div className="flex items-center gap-1.5 sm:gap-2"> {/* Responsive gap */}
+                            <li key={player.id} className="flex items-center justify-between p-1 sm:p-1.5 rounded text-xs hover:bg-secondary/80 transition-colors">
+                                <div className="flex items-center gap-1.5 sm:gap-2">
                                 <span className="font-semibold w-4 sm:w-5 text-center text-muted-foreground">{index + 1}</span>
-                                <Avatar className="h-5 w-5 sm:h-6 sm:w-6"> {/* Smaller avatar */}
-                                    <AvatarImage src={player.avatar} alt={player.name} data-ai-hint="person avatar"/>
-                                    <AvatarFallback>{player.name.substring(0, 1)}</AvatarFallback>
-                                </Avatar>
+                                <Avatar className="h-5 w-5 sm:h-6 sm:w-6"><AvatarImage src={player.avatar} alt={player.name} data-ai-hint="person avatar"/><AvatarFallback>{player.name.substring(0, 1)}</AvatarFallback></Avatar>
                                 <span className={`flex-1 truncate ${player.name === 'You' ? 'font-bold text-primary' : ''}`}>{player.name}</span>
                                 </div>
                                 <span className="font-semibold text-primary">{player.score} pts</span>
@@ -834,117 +401,48 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             </div>
         )}
 
-        {/* Quiz Modal/Overlay */}
-        {showQuiz && currentQuizData?.question && (
-            <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50 p-4"> {/* Increased z-index above UI toggle */}
-                <Card className="w-full max-w-lg shadow-xl border-primary border-2"> {/* Added primary border */}
+        {showQuiz && currentQuizData && (
+            <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                <Card className="w-full max-w-lg shadow-xl border-primary border-2">
                     <CardHeader>
                         <div className="flex justify-between items-center">
                            <div>
-                                <CardTitle className="text-primary flex items-center gap-2">
-                                    <Target className="h-5 w-5"/> {/* Icon for Node */}
-                                    {currentQuizData.nodeDescription || "Quiz Time!"} {/* Show node description */}
-                                </CardTitle>
-                                <CardDescription>{`Type: ${currentQuizData.question.type}`}</CardDescription>
+                                <CardTitle className="text-primary flex items-center gap-2"><Target className="h-5 w-5"/>{currentQuizData.nodeDescription || "Quiz Time!"}</CardTitle>
+                                <CardDescription>{`Type: ${currentQuizData.question.options?.type || 'Short Answer'}`}</CardDescription>
                            </div>
-                        <Button variant="ghost" size="icon" onClick={closeQuiz}>
-                            <X className="h-5 w-5 text-muted-foreground hover:text-foreground" /> {/* Styled close button */}
-                        </Button>
+                        <Button variant="ghost" size="icon" onClick={closeQuiz}><X className="h-5 w-5 text-muted-foreground hover:text-foreground" /></Button>
                         </div>
                     </CardHeader>
                     <CardContent>
-                    <p className="mb-6 text-lg font-medium">{currentQuizData.question.question}</p> {/* Increased margin */}
-
-                        {/* Render different quiz types */}
-                        {currentQuizData.question.type === 'Multiple Choice' && currentQuizData.question.options && (
+                    <p className="mb-6 text-lg font-medium">{currentQuizData.question.question_text}</p>
+                        
+                        {Array.isArray(currentQuizData.question.options) && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 {currentQuizData.question.options.map((option, index) => (
-                                    <Button
-                                        key={index}
-                                        variant="outline"
-                                        className="justify-start text-left h-auto py-3 hover:bg-accent hover:text-accent-foreground transition-colors duration-200" // Added hover effect
-                                        onClick={() => handleAnswerSubmit(option)}
-                                        >
+                                    <Button key={index} variant="outline" className="justify-start text-left h-auto py-3 hover:bg-accent hover:text-accent-foreground" onClick={() => handleAnswerSubmit(option)}>
                                         {option}
                                     </Button>
                                 ))}
                             </div>
                         )}
 
-                        {currentQuizData.question.type === 'Short Answer' && (
-                             // Use a form for better accessibility and Enter key handling
+                        {!currentQuizData.question.options && (
                             <form onSubmit={(e) => { e.preventDefault(); submitShortAnswer(); }} className="space-y-3">
                                 <Input
-                                    ref={shortAnswerInputRef} // Add ref
-                                    id="short-answer-input"
-                                    type="text"
-                                    placeholder="Type your answer..."
-                                    value={shortAnswerValue}
+                                    ref={shortAnswerInputRef} id="short-answer-input" type="text"
+                                    placeholder="Type your answer..." value={shortAnswerValue}
                                     onChange={(e) => setShortAnswerValue(e.target.value)}
-                                    onKeyDown={handleShortAnswerKeyDown} // Add key down handler
-                                    className="w-full p-2 border rounded focus:ring-primary focus:border-primary" // Added focus style
-                                    autoComplete="off" // Prevent browser autocomplete
-                                    aria-label="Short answer input"
+                                    onKeyDown={handleShortAnswerKeyDown} className="w-full p-2 border rounded focus:ring-primary focus:border-primary"
+                                    autoComplete="off" aria-label="Short answer input"
                                 />
-                                <Button type="submit" className="w-full">
-                                    Submit
-                                </Button>
+                                <Button type="submit" className="w-full">Submit</Button>
                             </form>
                         )}
-
-                         {/* TODO: Add Rendering for New Quiz Types */}
-                         {currentQuizData.question.type === 'Matching' && (
-                             <div className="text-muted-foreground italic">
-                                 Matching Quiz UI not yet implemented. Options: {JSON.stringify(currentQuizData.question.options)}
-                                 <Button onClick={() => handleAnswerSubmit('N/A')} className="mt-4">Submit (Placeholder)</Button>
-                             </div>
-                         )}
-                         {currentQuizData.question.type === 'Sequencing' && (
-                             <div className="text-muted-foreground italic">
-                                Sequencing Quiz UI not yet implemented. Options (Correct Order): {JSON.stringify(currentQuizData.question.options)}
-                                 <Button onClick={() => handleAnswerSubmit('N/A')} className="mt-4">Submit (Placeholder)</Button>
-                             </div>
-                         )}
-                         {currentQuizData.question.type === 'Drag & Drop' && (
-                             <div className="text-muted-foreground italic">
-                                Drag & Drop Quiz UI not yet implemented. Items: {JSON.stringify(currentQuizData.question.options)}
-                                 <Button onClick={() => handleAnswerSubmit('N/A')} className="mt-4">Submit (Placeholder)</Button>
-                             </div>
-                         )}
-                         {currentQuizData.question.type === 'Hotspot' && (
-                             <div className="text-muted-foreground italic">
-                                Hotspot Quiz UI not yet implemented. (Requires interaction with a background image/diagram)
-                                 <Button onClick={() => handleAnswerSubmit('N/A')} className="mt-4">Submit (Placeholder)</Button>
-                             </div>
-                         )}
-                         {currentQuizData.question.type === 'Scramble' && (
-                              <form onSubmit={(e) => { e.preventDefault(); submitShortAnswer(); }} className="space-y-3">
-                                <Input
-                                    ref={shortAnswerInputRef} // Can reuse ref
-                                    id="scramble-answer-input"
-                                    type="text"
-                                    placeholder="Unscramble and type here..."
-                                    value={shortAnswerValue}
-                                    onChange={(e) => setShortAnswerValue(e.target.value)}
-                                    onKeyDown={handleShortAnswerKeyDown}
-                                    className="w-full p-2 border rounded focus:ring-primary focus:border-primary"
-                                    autoComplete="off"
-                                    aria-label="Unscrambled answer input"
-                                />
-                                <Button type="submit" className="w-full">
-                                    Submit
-                                </Button>
-                            </form>
-                         )}
-
-
                     </CardContent>
                 </Card>
             </div>
         )}
       </main>
-      {/* Footer removed to maximize game area */}
-      {/* <Footer /> */}
     </div>
   );
 }

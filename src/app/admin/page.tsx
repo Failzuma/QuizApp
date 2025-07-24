@@ -1,5 +1,5 @@
 
-'use client'; // Add 'use client' directive
+'use client';
 
 import * as React from 'react';
 import { Header } from '@/components/Header';
@@ -9,26 +9,21 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users } from 'lucide-react';
-import { AddQuizModal, QuizFormData } from '@/components/admin/AddQuizModal'; // Import the modal component
+import { AddQuizModal, QuizFormData } from '@/components/admin/AddQuizModal';
+import { useToast } from "@/hooks/use-toast";
 
 // Mock Data - Replace with actual data fetching later
 const mockMaps = [
   { id: 'map1', title: 'English for IT - Vocabulary Basics', nodes: 15, quizzes: 10 },
   { id: 'map2', title: 'Basic English Grammar - Tenses', nodes: 12, quizzes: 8 },
-  { id: 'map3', title: 'Networking Concepts Map', nodes: 20, quizzes: 15 }, // Added map3 for quiz example
+  { id: 'map3', title: 'Networking Concepts Map', nodes: 20, quizzes: 15 },
 ];
 
-// Use React state for quizzes so it can be updated
 const initialMockQuizzes = [
-    { id: 'q1', mapId: 'map1', nodeId: 'node3', question: 'What does CPU stand for?', type: 'Short Answer', options: [], correctAnswer: 'Central Processing Unit' },
-    { id: 'q2', mapId: 'map1', nodeId: 'node7', question: 'Match the term to its definition.', type: 'Matching', options: ['CPU:Central Processing Unit', 'RAM:Random Access Memory'], correctAnswer: 'N/A'}, // Matching options format
-    { id: 'q3', mapId: 'map2', nodeId: 'node2', question: 'Choose the correct past tense verb.', type: 'Multiple Choice', options: ['go', 'went', 'gone', 'goes'], correctAnswer: 'went' },
-    { id: 'q4', mapId: 'map3', nodeId: 'node_osi', question: 'Order the first 3 layers of the OSI model (bottom-up).', type: 'Sequencing', options: ['Physical', 'Data Link', 'Network'], correctAnswer: 'N/A'}, // Sequencing uses options order
-    { id: 'q5', mapId: 'map1', nodeId: 'node_ports', question: 'Drag the protocol to the correct port number.', type: 'Drag & Drop', options: ['HTTP', 'HTTPS', 'FTP'], correctAnswer: 'N/A' }, // D&D items in options
-    { id: 'q6', mapId: 'map3', nodeId: 'node_router_pic', question: 'Click on the antenna of the router.', type: 'Hotspot', options: [], correctAnswer: 'N/A' },
-    { id: 'q7', mapId: 'map1', nodeId: 'node_scramble', question: 'nrtwoek', type: 'Scramble', options: [], correctAnswer: 'network' },
+    { id: 'q1', mapId: 'map1', nodeId: '1', question: 'What does CPU stand for?', type: 'Short Answer', options: [], correctAnswer: 'Central Processing Unit' },
+    { id: 'q2', mapId: 'map1', nodeId: '2', question: 'Match the term to its definition.', type: 'Matching', options: ['CPU:Central Processing Unit', 'RAM:Random Access Memory'], correctAnswer: 'N/A'},
+    { id: 'q3', mapId: 'map2', nodeId: '3', question: 'Choose the correct past tense verb.', type: 'Multiple Choice', options: ['go', 'went', 'gone', 'goes'], correctAnswer: 'went' },
 ];
-
 
 const mockSessionResults = [
   { id: 'session1', mapTitle: 'English for IT - Vocabulary Basics', date: '2024-07-20', participants: 5, avgScore: 82 },
@@ -38,8 +33,7 @@ const mockSessionResults = [
 export default function AdminPage() {
   const [isAddQuizModalOpen, setIsAddQuizModalOpen] = React.useState(false);
   const [quizzes, setQuizzes] = React.useState(initialMockQuizzes);
-
-  // TODO: Add role-based access control check here (consider moving logic if this becomes complex server-side check)
+  const { toast } = useToast();
 
   const handleExportResults = () => {
       console.log("Exporting session results...");
@@ -63,20 +57,66 @@ export default function AdminPage() {
       }
   };
 
-  const handleAddQuiz = (data: QuizFormData) => {
-    console.log('New Quiz Data:', data);
-    // Create a new quiz object based on the form data
-    const newQuiz = {
-      id: `q${Date.now()}`, // Use timestamp for more unique ID in mock data
-      mapId: data.mapId,
-      nodeId: data.nodeId,
-      question: data.question,
-      type: data.type,
-      options: data.options || [], // Use processed options
-      correctAnswer: data.correctAnswer || 'N/A', // Use processed correct answer
+  const handleAddQuiz = async (data: QuizFormData) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        toast({ title: "Error", description: "Authentication token not found. Please log in.", variant: "destructive" });
+        return;
+    }
+
+    // Convert string nodeId to number for the backend.
+    // NOTE: This assumes the form input for Node ID will be a number representing the actual database node_id.
+    const payload = {
+      ...data,
+      nodeId: data.nodeId // Assuming nodeId from form is the numeric ID as a string.
     };
-    setQuizzes(prevQuizzes => [...prevQuizzes, newQuiz]);
-    setIsAddQuizModalOpen(false); // Close modal on successful submission
+
+    console.log('Sending new quiz data to API:', payload);
+
+    try {
+        const response = await fetch('/api/quizzes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            toast({
+                title: "Success!",
+                description: "New quiz has been created successfully.",
+            });
+            // You might want to refresh the quiz list here from the DB
+            // For now, we'll just add the new quiz to the local state for immediate UI update.
+            const newQuizForState = {
+                id: result.question.question_id.toString(), // use new ID from DB
+                mapId: data.mapId,
+                nodeId: data.nodeId,
+                question: data.question,
+                type: data.type,
+                options: data.options || [],
+                correctAnswer: data.correctAnswer || 'N/A',
+            };
+            setQuizzes(prevQuizzes => [...prevQuizzes, newQuizForState]);
+            setIsAddQuizModalOpen(false); // Close modal
+        } else {
+             toast({
+                title: "Failed to Create Quiz",
+                description: result.error || "An unknown error occurred.",
+                variant: "destructive",
+            });
+        }
+    } catch (error) {
+         toast({
+            title: "Network Error",
+            description: "Could not connect to the server to create the quiz.",
+            variant: "destructive",
+        });
+    }
   };
 
 
@@ -86,14 +126,13 @@ export default function AdminPage() {
       <main className="flex-grow container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-6 text-primary">Admin Panel</h1>
 
-        <Tabs defaultValue="quizzes"> {/* Default to quizzes tab */}
+        <Tabs defaultValue="quizzes">
           <TabsList className="mb-6">
             <TabsTrigger value="maps"><Map className="mr-2 h-4 w-4" /> Maps</TabsTrigger>
             <TabsTrigger value="quizzes"><HelpCircle className="mr-2 h-4 w-4" /> Quizzes</TabsTrigger>
             <TabsTrigger value="results"><Users className="mr-2 h-4 w-4" /> Session Results</TabsTrigger>
           </TabsList>
 
-          {/* Map Management Tab */}
           <TabsContent value="maps">
             <Card>
               <CardHeader>
@@ -140,7 +179,6 @@ export default function AdminPage() {
             </Card>
           </TabsContent>
 
-          {/* Quiz Management Tab */}
             <TabsContent value="quizzes">
                 <Card>
                 <CardHeader>
@@ -159,14 +197,14 @@ export default function AdminPage() {
                         <TableHead>Question/Instruction</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Associated Map</TableHead>
-                         <TableHead>Associated Node</TableHead>
+                         <TableHead>Associated Node ID</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {quizzes.map((quiz) => (
                         <TableRow key={quiz.id}>
-                            <TableCell className="font-medium max-w-sm truncate">{quiz.question}</TableCell> {/* Wider column */}
+                            <TableCell className="font-medium max-w-sm truncate">{quiz.question}</TableCell>
                             <TableCell>{quiz.type}</TableCell>
                              <TableCell>{mockMaps.find(m => m.id === quiz.mapId)?.title || 'N/A'}</TableCell>
                              <TableCell>{quiz.nodeId}</TableCell>
@@ -186,7 +224,6 @@ export default function AdminPage() {
                 </Card>
             </TabsContent>
 
-          {/* Session Results Tab */}
           <TabsContent value="results">
             <Card>
               <CardHeader>
@@ -217,7 +254,7 @@ export default function AdminPage() {
                         <TableCell>{session.participants}</TableCell>
                         <TableCell>{session.avgScore}</TableCell>
                          <TableCell className="text-right">
-                            <Button variant="link" size="sm">View Details</Button> {/* Link to detailed session view later */}
+                            <Button variant="link" size="sm">View Details</Button>
                          </TableCell>
                       </TableRow>
                     ))}
@@ -230,7 +267,6 @@ export default function AdminPage() {
       </main>
       <Footer />
 
-       {/* Add Quiz Modal */}
        <AddQuizModal
           isOpen={isAddQuizModalOpen}
           onClose={() => setIsAddQuizModalOpen(false)}
