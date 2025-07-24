@@ -55,7 +55,7 @@ export async function GET() {
 }
 
 
-// POST to create a new map (blueprint) with multiple custom nodes
+// POST to create a new map (blueprint) with multiple custom nodes and obstacles
 export async function POST(request: Request) {
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token || !verifyToken(token)) {
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     }
 
     try {
-        const { mapIdentifier, title, nodes } = await request.json();
+        const { mapIdentifier, title, nodes, obstacles } = await request.json();
 
         if (!mapIdentifier || !title || !Array.isArray(nodes)) {
             return NextResponse.json({ error: 'Map identifier, title, and a nodes array are required' }, { status: 400 });
@@ -85,35 +85,51 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: `Map with identifier "${mapIdentifier}" already exists.` }, { status: 409 });
         }
 
-        // Use a transaction to create all nodes for the map at once
-        const createdNodes = await prisma.$transaction(
-            nodes.map(node => 
-                prisma.mapNode.create({
-                    data: {
+        // Use a transaction to create the map's nodes and obstacles atomically
+        const transactionResult = await prisma.$transaction(async (tx) => {
+            const createdNodes = await tx.mapNode.createMany({
+                data: nodes.map(node => ({
+                    map_identifier: mapIdentifier,
+                    title: 'Interactive Node', 
+                    content: 'Quiz awaits here.',
+                    posX: node.posX,
+                    posY: node.posY,
+                }))
+            });
+
+            if (obstacles && obstacles.length > 0) {
+                const createdObstacles = await tx.mapObstacle.createMany({
+                    data: obstacles.map((obstacle: any) => ({
                         map_identifier: mapIdentifier,
-                        // For a blueprint, the node title and content are generic.
-                        // They get meaning when a specific quiz is attached to the node_id.
-                        title: 'Interactive Node', 
-                        content: 'Quiz awaits here.',
-                        posX: node.posX, // Use the custom position from the form
-                        posY: node.posY, // Use the custom position from the form
-                    }
-                })
-            )
-        );
+                        posX: obstacle.posX,
+                        posY: obstacle.posY,
+                        width: obstacle.width,
+                        height: obstacle.height,
+                    }))
+                });
+                return { nodes: createdNodes, obstacles: createdObstacles };
+            }
+
+            return { nodes: createdNodes, obstacles: { count: 0 } };
+        });
+
+        // Fetch the created nodes to return them in the response
+        const newNodes = await prisma.mapNode.findMany({
+            where: { map_identifier: mapIdentifier }
+        });
 
         return NextResponse.json({ 
-            message: `Map '${title}' created successfully with ${createdNodes.length} nodes.`,
+            message: `Map '${title}' created successfully with ${transactionResult.nodes.count} nodes and ${transactionResult.obstacles.count} obstacles.`,
             map: {
                 map_identifier: mapIdentifier,
                 title: title,
-                nodes: createdNodes
+                nodes: newNodes
             } 
         }, { status: 201 });
 
     } catch (error: any) {
         console.error('API /maps POST Error:', error);
-        if (error.code === 'P2002') { // Handle potential race condition for unique identifier
+        if (error.code === 'P2002') { 
              return NextResponse.json({ error: `Map with identifier "${request.json().then(d => d.mapIdentifier)}" already exists.` }, { status: 409 });
         }
         return NextResponse.json({ error: "Gagal memproses permintaan", details: error.message }, { status: 500 });

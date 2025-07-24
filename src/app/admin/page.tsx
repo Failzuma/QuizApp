@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users } from 'lucide-react';
 import { AddQuizModal, QuizFormData } from '@/components/admin/AddQuizModal';
-import { AddMapModal } from '@/components/admin/AddMapModal';
+import { AddMapModal, MapBlueprintFormData } from '@/components/admin/AddMapModal';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 
@@ -80,7 +80,7 @@ export default function AdminPage() {
       }
   };
   
-  const handleAddMap = async (data: { mapIdentifier: string; title: string; nodes: { posX: number, posY: number }[] }) => {
+  const handleAddMap = async (data: MapBlueprintFormData) => {
     const token = localStorage.getItem('token');
     if (!token) {
         toast({ title: "Error", description: "Authentication token not found.", variant: "destructive" });
