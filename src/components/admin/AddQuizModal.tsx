@@ -238,7 +238,7 @@ export function AddQuizModal({ isOpen, onClose, onSubmit, availableMaps, initial
             <Label htmlFor="nodeId">Associated Node ID <span className="text-destructive">*</span></Label>
             <Input
               id="nodeId"
-              placeholder="e.g., node_intro, node5"
+              placeholder="e.g., node_intro, node5 (use numeric ID for now)"
               {...register('nodeId')}
             />
              {errors.nodeId && <p className="text-sm text-destructive">{errors.nodeId.message}</p>}
@@ -404,3 +404,5 @@ export function AddQuizModal({ isOpen, onClose, onSubmit, availableMaps, initial
     </Dialog>
   );
 }
+
+    
