@@ -25,6 +25,7 @@ export default class MainScene extends Phaser.Scene {
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys?: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key; }; // Added for WASD
   private nodes?: Phaser.Physics.Arcade.StaticGroup;
+  private obstacles?: Phaser.Physics.Arcade.StaticGroup; // Group for collision objects
   private onNodeInteract!: NodeInteractionCallback; // Should be set in initScene
   private onNodesCountUpdate!: NodesCountCallback; // Callback for node count
   private mapId?: string;
@@ -198,6 +199,12 @@ export default class MainScene extends Phaser.Scene {
         console.log(`[Phaser Scene] Set background ${backgroundAssetKey} and world bounds: ${bgWidth}x${bgHeight}.`);
     }
 
+    // Initialize obstacles group
+    this.obstacles = this.physics.add.staticGroup();
+
+    // Call a method to setup map-specific obstacles
+    this.setupObstacles();
+
     if (!this.textures.exists('player')) {
          console.error("[Phaser Scene] Player texture 'player' not loaded.");
           const placeholder = this.add.graphics().fillStyle(0x1A237E, 1);
@@ -237,6 +244,9 @@ export default class MainScene extends Phaser.Scene {
         console.log(`[Phaser Scene] Initial node count: ${this.nodes.countActive(true)}`);
     }
 
+    // Add collision between player and obstacles
+    this.physics.add.collider(this.player, this.obstacles);
+
     this.physics.add.overlap(this.player, this.nodes, this.handleNodeOverlap, undefined, this);
 
     if (this.input.keyboard) {
@@ -259,6 +269,38 @@ export default class MainScene extends Phaser.Scene {
      this.handleResize(this.scale.gameSize);
      console.log("[Phaser Scene] MainScene create method finished.");
   }
+  
+  // This is where you will define the collision areas for each map
+  setupObstacles() {
+    if (!this.obstacles) return;
+
+    // Example for a hypothetical map with identifier 'school_map'
+    if (this.mapId === 'school_map') {
+        // Add an obstacle for a wall. new Phaser.Geom.Rectangle(x, y, width, height)
+        const wall = this.add.rectangle(100, 100, 500, 20); // x, y, width, height
+        this.obstacles.add(wall);
+        
+        // Add an obstacle for a table
+        const table = this.add.rectangle(250, 300, 150, 80);
+        this.obstacles.add(table);
+    }
+
+    // Example for another map
+    if (this.mapId === 'restaurant_map') {
+        const counter = this.add.rectangle(0, 200, 300, 50);
+        this.obstacles.add(counter);
+    }
+
+    // By default, the obstacle bodies are not visible.
+    // To debug and see the collision boxes, you can add this line:
+    // this.physics.world.createDebugGraphic();
+    // this.obstacles.getChildren().forEach(obstacle => {
+    //   (obstacle.body as Phaser.Physics.Arcade.Body).debugShowBody = true;
+    // });
+    
+    console.log(`[Phaser Scene] Setup obstacles for map: ${this.mapId}. Total obstacles: ${this.obstacles.getLength()}`);
+  }
+
 
   handleResize(gameSize: Phaser.Structs.Size) {
      const width = gameSize.width;
