@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users } from 'lucide-react';
 import { AddQuizModal, QuizFormData } from '@/components/admin/AddQuizModal';
+import { AddMapModal, MapFormData } from '@/components/admin/AddMapModal';
 import { useToast } from "@/hooks/use-toast";
 
 // Define interfaces for our data
@@ -41,6 +42,7 @@ interface SessionResult {
 
 export default function AdminPage() {
   const [isAddQuizModalOpen, setIsAddQuizModalOpen] = React.useState(false);
+  const [isAddMapModalOpen, setIsAddMapModalOpen] = React.useState(false);
   const [quizzes, setQuizzes] = React.useState<AdminQuiz[]>([]);
   const [maps, setMaps] = React.useState<AdminMap[]>([]);
   const [sessionResults, setSessionResults] = React.useState<SessionResult[]>([]);
@@ -75,6 +77,56 @@ export default function AdminPage() {
         alert("CSV export is not supported in this browser.");
       }
   };
+  
+    const handleAddMap = async (data: MapFormData) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        toast({ title: "Error", description: "Authentication token not found.", variant: "destructive" });
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/maps', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            toast({
+                title: "Success!",
+                description: "New map blueprint has been created.",
+            });
+            // For now, we just add to local state. A real app would refetch.
+            const newMap: AdminMap = {
+                id: result.map.map_identifier,
+                title: result.map.title,
+                nodes: 1, // Starts with one placeholder node
+                quizzes: 0,
+            };
+            setMaps(prevMaps => [...prevMaps, newMap]);
+            setIsAddMapModalOpen(false);
+        } else {
+             toast({
+                title: "Failed to Create Map",
+                description: result.error || "An unknown error occurred.",
+                variant: "destructive",
+            });
+        }
+    } catch (error) {
+         toast({
+            title: "Network Error",
+            description: "Could not connect to the server to create the map.",
+            variant: "destructive",
+        });
+    }
+  };
+
 
   const handleAddQuiz = async (data: QuizFormData) => {
     const token = localStorage.getItem('token');
@@ -143,7 +195,7 @@ export default function AdminPage() {
       <main className="flex-grow container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-6 text-primary">Admin Panel</h1>
 
-        <Tabs defaultValue="quizzes">
+        <Tabs defaultValue="maps">
           <TabsList className="mb-6">
             <TabsTrigger value="maps"><Map className="mr-2 h-4 w-4" /> Maps</TabsTrigger>
             <TabsTrigger value="quizzes"><HelpCircle className="mr-2 h-4 w-4" /> Quizzes</TabsTrigger>
@@ -155,7 +207,7 @@ export default function AdminPage() {
               <CardHeader>
                 <div className="flex justify-between items-center">
                    <CardTitle>Manage Maps</CardTitle>
-                   <Button size="sm">
+                   <Button size="sm" onClick={() => setIsAddMapModalOpen(true)}>
                        <PlusCircle className="mr-2 h-4 w-4" /> Add New Map
                     </Button>
                 </div>
@@ -307,6 +359,12 @@ export default function AdminPage() {
         </Tabs>
       </main>
       <Footer />
+      
+       <AddMapModal
+          isOpen={isAddMapModalOpen}
+          onClose={() => setIsAddMapModalOpen(false)}
+          onSubmit={handleAddMap}
+       />
 
        <AddQuizModal
           isOpen={isAddQuizModalOpen}
