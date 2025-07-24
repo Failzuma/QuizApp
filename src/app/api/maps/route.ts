@@ -91,10 +91,12 @@ export async function POST(request: Request) {
                 prisma.mapNode.create({
                     data: {
                         map_identifier: mapIdentifier,
-                        title: node.title || 'Untitled Node',
-                        content: node.content || 'Node content.',
-                        posX: node.posX ?? 100,
-                        posY: node.posY ?? 100,
+                        // For a blueprint, the node title and content are generic.
+                        // They get meaning when a specific quiz is attached to the node_id.
+                        title: 'Interactive Node', 
+                        content: 'Quiz awaits here.',
+                        posX: node.posX, // Use the custom position from the form
+                        posY: node.posY, // Use the custom position from the form
                     }
                 })
             )

@@ -78,7 +78,7 @@ export default function AdminPage() {
       }
   };
   
-  const handleAddMap = async (data: { mapIdentifier: string; title: string; nodes: any[] }) => {
+  const handleAddMap = async (data: { mapIdentifier: string; title: string; nodes: { posX: number, posY: number }[] }) => {
     const token = localStorage.getItem('token');
     if (!token) {
         toast({ title: "Error", description: "Authentication token not found.", variant: "destructive" });
@@ -92,7 +92,7 @@ export default function AdminPage() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify(data) // Send the complete data object
+            body: JSON.stringify(data)
         });
 
         const result = await response.json();
