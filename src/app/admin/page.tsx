@@ -84,6 +84,17 @@ export default function AdminPage() {
         toast({ title: "Error", description: "Authentication token not found.", variant: "destructive" });
         return;
     }
+    
+    // Prepare the payload for the new API structure
+    const payload = {
+      mapIdentifier: data.mapIdentifier,
+      title: data.title,
+      // Create one default node to start with. The UI can be expanded later to add more.
+      nodes: [
+        { title: 'Starting Node', content: 'This is the first node.', posX: 150, posY: 150 }
+      ]
+    };
+
 
     try {
         const response = await fetch('/api/maps', {
@@ -92,7 +103,7 @@ export default function AdminPage() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify(data)
+            body: JSON.stringify(payload)
         });
 
         const result = await response.json();
@@ -100,14 +111,14 @@ export default function AdminPage() {
         if (response.ok) {
             toast({
                 title: "Success!",
-                description: "New map blueprint has been created.",
+                description: `Map '${result.map.title}' has been created.`,
             });
-            // For now, we just add to local state. A real app would refetch.
+            // Refetch or update local state
             const newMap: AdminMap = {
                 id: result.map.map_identifier,
                 title: result.map.title,
-                nodes: 1, // Starts with one placeholder node
-                quizzes: 0,
+                nodes: result.map.nodes.length,
+                quizzes: 0, // Initially no quizzes
             };
             setMaps(prevMaps => [...prevMaps, newMap]);
             setIsAddMapModalOpen(false);
