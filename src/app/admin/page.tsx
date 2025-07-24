@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users } from 'lucide-react';
 import { AddQuizModal, QuizFormData } from '@/components/admin/AddQuizModal';
-import { AddMapModal, MapFormData } from '@/components/admin/AddMapModal';
+import { AddMapModal } from '@/components/admin/AddMapModal';
 import { useToast } from "@/hooks/use-toast";
 
 // Define interfaces for our data
@@ -78,25 +78,13 @@ export default function AdminPage() {
       }
   };
   
-    const handleAddMap = async (data: MapFormData) => {
+  const handleAddMap = async (data: { mapIdentifier: string; title: string; nodes: any[] }) => {
     const token = localStorage.getItem('token');
     if (!token) {
         toast({ title: "Error", description: "Authentication token not found.", variant: "destructive" });
         return;
     }
     
-    // Prepare the payload for the new API structure that accepts multiple nodes
-    const payload = {
-      mapIdentifier: data.mapIdentifier,
-      title: data.title,
-      // For now, we create one default node. The UI can be expanded later to add more.
-      // The API is ready to handle up to 10 nodes.
-      nodes: [
-        { title: 'Starting Point', content: 'This is the first node of the map.', posX: 150, posY: 150 }
-      ]
-    };
-
-
     try {
         const response = await fetch('/api/maps', {
             method: 'POST',
@@ -104,7 +92,7 @@ export default function AdminPage() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(data) // Send the complete data object
         });
 
         const result = await response.json();
