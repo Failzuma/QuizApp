@@ -1,107 +1,102 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
+// datasource db defines the database connection details.
+datasource db {
+  provider = "postgresql" // Or your preferred database provider
+  url      = env("DATABASE_URL")
+}
+
+// generator client specifies that Prisma Client should be generated.
 generator client {
   provider = "prisma-client-js"
 }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
+// -- AUTH & USER --
 model User {
-  user_id       Int       @id @default(autoincrement())
-  username      String    @unique
-  email         String    @unique
+  user_id     Int       @id @default(autoincrement())
+  username    String    @unique
+  email       String    @unique
   password_hash String
-  created_at    DateTime  @default(now())
-  answers       Answer[]
-  room_participant RoomParticipant[]
+  created_at  DateTime  @default(now())
+  role        String    @default("player") // e.g., 'player', 'admin'
+  answers     Answer[]
 }
 
+// -- MAP & CONTENT STRUCTURE --
 model Map {
-  map_identifier String @id @unique
-  title          String
-  created_at     DateTime @default(now())
-  nodes          MapNode[]
-  obstacles      MapObstacle[]
-  quizzes        Quiz[] // A map can be a blueprint for many quizzes
-}
-
-// New table for playable quiz instances
-model Quiz {
-  quiz_id        Int       @id @default(autoincrement())
-  title          String
-  map_identifier String
-  map            Map       @relation(fields: [map_identifier], references: [map_identifier])
-  created_at     DateTime  @default(now())
-  updated_at     DateTime  @updatedAt
+  map_id          Int      @id @default(autoincrement())
+  map_identifier  String   @unique // e.g., "dunia_tenses_1"
+  title           String   
+  created_at      DateTime @default(now())
+  
+  nodes           MapNode[]
+  quizzes         Quiz[]
 }
 
 model MapNode {
-  node_id        Int        @id @default(autoincrement())
-  map_identifier String
-  map            Map        @relation(fields: [map_identifier], references: [map_identifier])
-  title          String?
-  content        String?
-  posX           Int?
-  posY           Int?
-  created_at     DateTime   @default(now())
-  questions      Question[]
+  node_id         Int      @id @default(autoincrement())
+  map_identifier  String
+  title           String?
+  content         String?
+  posX            Float?
+  posY            Float?
+  
+  map             Map        @relation(fields: [map_identifier], references: [map_identifier])
+  questions       Question[]
 }
 
 model MapObstacle {
-  obstacle_id    Int      @id @default(autoincrement())
-  map_identifier String
-  map            Map      @relation(fields: [map_identifier], references: [map_identifier])
-  posX           Int
-  posY           Int
-  width          Int
-  height         Int
-  created_at     DateTime @default(now())
+  obstacle_id     Int    @id @default(autoincrement())
+  map_identifier  String
+  posX            Float
+  posY            Float
+  width           Float
+  height          Float
+}
+
+// -- QUIZ & QUESTIONS --
+
+// Represents a playable instance of a quiz
+model Quiz {
+  quiz_id         Int      @id @default(autoincrement())
+  map_identifier  String
+  title           String   // e.g., "Latihan Harian Tenses", "Ujian Tengah Semester"
+  created_at      DateTime @default(now())
+
+  map             Map      @relation(fields: [map_identifier], references: [map_identifier])
 }
 
 model Question {
-  question_id     Int       @id @default(autoincrement())
+  question_id     Int      @id @default(autoincrement())
   node_id         Int
-  mapNode         MapNode   @relation(fields: [node_id], references: [node_id])
   question_text   String
-  options         Json? // For multiple choice, matching pairs, etc.
   correct_answer  String
-  created_at      DateTime  @default(now())
+  created_at      DateTime @default(now())
+  
+  mapNode         MapNode  @relation(fields: [node_id], references: [node_id])
+  options         Option[]
   answers         Answer[]
 }
 
+model Option {
+  option_id       Int      @id @default(autoincrement())
+  question_id     Int
+  option_text     String
+  
+  question        Question @relation(fields: [question_id], references: [question_id], onDelete: Cascade)
+}
+
+
+// -- USER PROGRESS & RESULTS --
 model Answer {
-  answer_id         Int       @id @default(autoincrement())
+  answer_id         Int      @id @default(autoincrement())
   user_id           Int
-  user              User      @relation(fields: [user_id], references: [user_id])
   question_id       Int
-  question          Question  @relation(fields: [question_id], references: [question_id])
-  user_answer       String
+  selected_option   String
   is_correct        Boolean
-  waktu_pengerjaan  DateTime  @default(now())
-  room_participant_id Int?
-  room_participant  RoomParticipant? @relation(fields: [room_participant_id], references: [id])
+  waktu_pengerjaan  DateTime @default(now())
+
+  user              User     @relation(fields: [user_id], references: [user_id])
+  question          Question @relation(fields: [question_id], references: [question_id])
 }
 
-model Room {
-  id                Int       @id @default(autoincrement())
-  room_code         String    @unique
-  map_identifier    String
-  created_at        DateTime  @default(now())
-  is_active         Boolean   @default(true)
-  participants      RoomParticipant[]
-}
-
-model RoomParticipant {
-  id            Int      @id @default(autoincrement())
-  room_id       Int
-  room          Room     @relation(fields: [room_id], references: [id])
-  user_id       Int
-  user          User     @relation(fields: [user_id], references: [user_id])
-  session_score Int      @default(0)
-  joined_at     DateTime @default(now())
-  answers       Answer[]
-}
+    

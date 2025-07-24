@@ -21,7 +21,7 @@ interface AdminMap {
 }
 
 interface AdminQuiz {
-    id: number; // Now quiz_id
+    id: number;
     title: string;
     mapId: string;
 }
@@ -45,17 +45,22 @@ export default function AdminPage() {
   const router = useRouter();
 
   React.useEffect(() => {
+    const token = localStorage.getItem('token');
     const fetchData = async () => {
       try {
         setIsLoading(prev => ({ ...prev, maps: true, quizzes: true, results: true }));
         
         // Fetch Maps (Blueprints)
-        const mapsResponse = await fetch('/api/maps/admin-summary'); // A new endpoint to get summary
+        const mapsResponse = await fetch('/api/maps/admin-summary', {
+             headers: { 'Authorization': `Bearer ${token}` }
+        });
         const mapsData = await mapsResponse.json();
         setMaps(mapsData);
 
         // Fetch Quizzes (Playable Instances)
-        const quizzesResponse = await fetch('/api/quizzes'); // This now fetches playable quizzes
+        const quizzesResponse = await fetch('/api/quizzes', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const quizzesData = await quizzesResponse.json();
         const formattedQuizzes = quizzesData.map((q: any) => ({ id: q.id, title: q.title, mapId: q.mapId }));
         setQuizzes(formattedQuizzes);
@@ -67,8 +72,12 @@ export default function AdminPage() {
         setIsLoading(prev => ({ ...prev, maps: false, quizzes: false, results: false }));
       }
     };
-    fetchData();
-  }, [toast]);
+    if (token) {
+        fetchData();
+    } else {
+        router.push('/login');
+    }
+  }, [toast, router]);
 
 
   const handleExportResults = () => {
@@ -104,7 +113,6 @@ export default function AdminPage() {
   const handleAddQuiz = async (data: QuizFormData) => {
     const token = localStorage.getItem('token');
     try {
-        // This now creates a quiz *instance*, not a question
         const response = await fetch('/api/quizzes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -169,6 +177,9 @@ export default function AdminPage() {
                             <TableCell className="font-mono">{map.id}</TableCell>
                             <TableCell>{map.nodes}</TableCell>
                             <TableCell className="text-right space-x-2">
+                               <Button variant="ghost" size="icon" title="Manage Questions" onClick={() => router.push(`/admin/maps/${map.id}/questions`)}>
+                                   <HelpCircle className="h-4 w-4" />
+                               </Button>
                                <Button variant="ghost" size="icon" title="Edit Obstacles" onClick={() => router.push(`/admin/maps/${map.id}/editor`)}>
                                    <MapPin className="h-4 w-4" />
                                </Button>
@@ -250,7 +261,7 @@ export default function AdminPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>Question Bank</CardTitle>
-                    <CardDescription>Manage all individual questions across all maps.</CardDescription>
+                    <CardDescription>Manage all individual questions across all maps. This is a centralized place to view all questions.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <p className="text-muted-foreground text-center py-4">Feature coming soon.</p>
@@ -307,5 +318,6 @@ export default function AdminPage() {
        />
     </div>
   );
+}
 
     
