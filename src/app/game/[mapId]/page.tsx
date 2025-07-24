@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { X, Trophy, CheckSquare, Eye, EyeOff, PanelTopClose, PanelTopOpen, ZoomIn, ZoomOut, Target, Loader2 } from 'lucide-react';
 import type MainSceneType from '@/game/scenes/MainScene';
-import type { NodeInteractionCallback, NodesCountCallback } from '@/game/scenes/MainScene';
+import type { NodeInteractionCallback, NodesCountCallback, NodeData } from '@/game/scenes/MainScene';
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type nipplejs from 'nipplejs';
@@ -17,22 +17,28 @@ import type nipplejs from 'nipplejs';
 // --- Dynamic Data Structures (from API) ---
 interface Question {
     question_id: number;
-    node_id: number;
     question_text: string;
     options: any; // JSON from DB, can be string[] or other structures
-    // Correct answer is NOT sent to client
 }
 
-// Represents the link between a map node and a specific question
-// This will be constructed on the client-side
+// Represents a node from the DB, including its questions
+interface NodeWithQuiz extends NodeData {
+    nodeId: number; // The numeric ID from the database
+    title: string | null;
+    content: string | null;
+    posX: number | null;
+    posY: number | null;
+    questions: Question[];
+}
+
+// Represents the client-side mapping for a specific question triggered by a node
 interface ClientNodeMapping {
-    nodeId: string; // The string identifier used in Phaser (e.g., 'node_intro')
+    nodeDbId: number; // The database ID of the node (e.g., 5)
     question: Question;
     nodeDescription: string;
 }
 
 
-// --- Mock Data (Players only, quiz data is now dynamic) ---
 const mockPlayers = [
   { id: 'player1', name: 'Player One', score: 150, avatar: 'https://picsum.photos/seed/player1/40/40' },
   { id: 'player2', name: 'You', score: 120, avatar: 'https://picsum.photos/seed/you/40/40' },
@@ -57,7 +63,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
   const [phaserInitialized, setPhaserInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [currentMapTitle, setCurrentMapTitle] = useState<string>('Loading...');
-  const [clientNodeMappings, setClientNodeMappings] = useState<ClientNodeMapping[]>([]);
+  const [allNodeData, setAllNodeData] = useState<NodeWithQuiz[]>([]);
 
   // --- Refs ---
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
@@ -83,31 +89,27 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                 if (!response.ok) {
                     throw new Error(`Failed to fetch quizzes: ${response.statusText}`);
                 }
-                const questionsFromApi: Question[] = await response.json();
-                console.log(`[React] Fetched ${questionsFromApi.length} questions for map ${mapId}.`);
+                const nodesFromApi: NodeWithQuiz[] = await response.json();
+                console.log(`[React] Fetched ${nodesFromApi.length} nodes for map ${mapId}.`);
+                
+                setAllNodeData(nodesFromApi);
+                setCurrentMapTitle(`Map: ${decodeURIComponent(mapId)}`);
+                setRemainingNodesCount(nodesFromApi.filter(n => n.questions.length > 0).length);
 
-                // TODO: This is a critical point. The client needs to map the numeric `node_id` from the questions
-                // to the string-based `nodeId` used in the Phaser scene (e.g., 'node_intro').
-                // This mapping should ideally come from the database or another API call.
-                // For this prototype, we will create a DUMMY MAPPING.
-                const dummyMappings = questionsFromApi.map((q, index) => ({
-                    nodeId: `node_${q.node_id}`, // e.g., 'node_1', 'node_2'
-                    question: q,
-                    nodeDescription: `Quiz Node ${q.node_id}`
+                // Prepare node data for Phaser, including positions
+                const phaserNodeData: NodeData[] = nodesFromApi.map(n => ({
+                    nodeId: n.node_id, // Pass numeric DB ID
+                    x: n.posX,
+                    y: n.posY
                 }));
-
-                setClientNodeMappings(dummyMappings);
-                setCurrentMapTitle(`Map: ${decodeURIComponent(mapId)}`); // Update title
-                setRemainingNodesCount(dummyMappings.length); // Set initial count
 
                 // Pass node data to Phaser scene
                 if (sceneInstanceRef.current) {
-                    const nodeSetupData = dummyMappings.map(m => ({ nodeId: m.nodeId }));
-                    sceneInstanceRef.current.setupNodes(nodeSetupData);
+                    sceneInstanceRef.current.setupNodes(phaserNodeData);
                 } else {
                      console.warn("[React] Scene instance not ready when map data loaded. Node setup might be delayed.");
                 }
-                setPhaserInitialized(false); // Allow re-init if map changes
+                setPhaserInitialized(false);
 
            } catch (error) {
                 console.error("[React] Error fetching quiz data:", error);
@@ -121,41 +123,48 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
    }, [resolvedParams?.mapId, toast]);
 
   // --- Callbacks for Phaser ---
-  const handleNodeInteraction: NodeInteractionCallback = useCallback((nodeId) => {
-    console.log(`[React] Interaction from node: ${nodeId}`);
-    const mapping = clientNodeMappings.find(m => m.nodeId === nodeId);
+  const handleNodeInteraction: NodeInteractionCallback = useCallback((nodeDbId) => {
+    console.log(`[React] Interaction from node with DB ID: ${nodeDbId}`);
+    const nodeWithQuiz = allNodeData.find(n => n.node_id === nodeDbId);
 
-    if (mapping) {
-        setCurrentQuizData(mapping);
+    if (nodeWithQuiz && nodeWithQuiz.questions.length > 0) {
+        // For simplicity, trigger the first question associated with the node
+        const firstQuestion = nodeWithQuiz.questions[0];
+        setCurrentQuizData({
+            nodeDbId: nodeDbId,
+            question: firstQuestion,
+            nodeDescription: nodeWithQuiz.title || `Quiz Node ${nodeDbId}`
+        });
+
         setShowQuiz(true);
         setShortAnswerValue('');
         sceneInstanceRef.current?.disablePlayerInput();
-        sceneInstanceRef.current?.highlightNode(nodeId);
-        if (mapping.question.options?.type === 'Short Answer') {
+        sceneInstanceRef.current?.highlightNode(nodeDbId);
+        if (!firstQuestion.options || firstQuestion.options?.length === 0) { // Assuming short answer if no options
              setTimeout(() => shortAnswerInputRef.current?.focus(), 100);
         }
     } else {
-        console.warn(`[React] No mapping found for nodeId: ${nodeId}`);
-        reEnableNode(nodeId);
+        console.warn(`[React] No quiz found for nodeDbId: ${nodeDbId}`);
+        reEnableNode(nodeDbId);
         sceneInstanceRef.current?.enablePlayerInput();
-        sceneInstanceRef.current?.clearNodeHighlight(nodeId);
+        sceneInstanceRef.current?.clearNodeHighlight(nodeDbId);
     }
-  }, [clientNodeMappings]);
+  }, [allNodeData]);
 
   const handleNodesCountUpdate: NodesCountCallback = useCallback((count) => {
       setRemainingNodesCount(count);
   }, []);
 
-  const removeNode = useCallback((nodeId: string) => {
+  const removeNode = useCallback((nodeDbId: number) => {
     if (sceneInstanceRef.current?.removeNode) {
-        sceneInstanceRef.current.removeNode(nodeId);
+        sceneInstanceRef.current.removeNode(nodeDbId);
     }
   }, []);
 
-  const reEnableNode = useCallback((nodeId: string) => {
+  const reEnableNode = useCallback((nodeDbId: number) => {
        if (sceneInstanceRef.current?.reEnableNode) {
-           sceneInstanceRef.current.reEnableNode(nodeId);
-           sceneInstanceRef.current.clearNodeHighlight(nodeId);
+           sceneInstanceRef.current.reEnableNode(nodeDbId);
+           sceneInstanceRef.current.clearNodeHighlight(nodeDbId);
        }
    }, []);
 
@@ -170,7 +179,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
    useEffect(() => {
         let game: Phaser.Game | null = null;
         const initPhaser = async () => {
-            if (!resolvedParams?.mapId || clientNodeMappings.length === 0 || !gameContainerRef.current || phaserInitialized || gameInstanceRef.current) {
+            if (!resolvedParams?.mapId || allNodeData.length === 0 || !gameContainerRef.current || phaserInitialized || gameInstanceRef.current) {
               return;
             }
             setPhaserInitialized(true);
@@ -178,6 +187,12 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
             const Phaser = await import('phaser');
             const { default: MainScene } = await import('@/game/scenes/MainScene');
             const mainSceneInstance = new MainScene();
+            
+            const phaserNodeSetupData = allNodeData.map(n => ({
+                nodeId: n.node_id,
+                x: n.posX,
+                y: n.posY
+            }));
 
             const config: Phaser.Types.Core.GameConfig = {
               type: Phaser.AUTO,
@@ -197,7 +212,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                         { mapId: resolvedParams.mapId },
                         handleNodeInteraction,
                         handleNodesCountUpdate,
-                        clientNodeMappings.map(m => ({ nodeId: m.nodeId }))
+                        phaserNodeSetupData
                     );
                     sceneInstanceRef.current = scene;
                   } else {
@@ -232,7 +247,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
           }, 50);
           return () => clearTimeout(destroyTimeout);
         };
-      }, [resolvedParams?.mapId, clientNodeMappings, phaserInitialized, handleNodeInteraction, handleNodesCountUpdate]);
+      }, [resolvedParams?.mapId, allNodeData, phaserInitialized, handleNodeInteraction, handleNodesCountUpdate]);
 
     // --- Joystick Initialization ---
      useEffect(() => {
@@ -280,7 +295,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
 
     const handleAnswerSubmit = async (selectedAnswer: string) => {
       if (!currentQuizData) return;
-      const nodeIdToRemove = currentQuizData.nodeId;
+      const nodeIdToRemove = currentQuizData.nodeDbId;
       const token = localStorage.getItem('token');
 
       try {
@@ -313,7 +328,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     };
 
     const closeQuiz = () => {
-      const nodeIdToReEnable = currentQuizData?.nodeId;
+      const nodeIdToReEnable = currentQuizData?.nodeDbId;
       setShowQuiz(false);
       if (nodeIdToReEnable) {
          reEnableNode(nodeIdToReEnable);
@@ -416,7 +431,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                     <CardContent>
                     <p className="mb-6 text-lg font-medium">{currentQuizData.question.question_text}</p>
                         
-                        {Array.isArray(currentQuizData.question.options) && (
+                        {Array.isArray(currentQuizData.question.options) && currentQuizData.question.options.length > 0 && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 {currentQuizData.question.options.map((option, index) => (
                                     <Button key={index} variant="outline" className="justify-start text-left h-auto py-3 hover:bg-accent hover:text-accent-foreground" onClick={() => handleAnswerSubmit(option)}>
@@ -426,7 +441,7 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
                             </div>
                         )}
 
-                        {!currentQuizData.question.options && (
+                        {(!currentQuizData.question.options || currentQuizData.question.options.length === 0) && (
                             <form onSubmit={(e) => { e.preventDefault(); submitShortAnswer(); }} className="space-y-3">
                                 <Input
                                     ref={shortAnswerInputRef} id="short-answer-input" type="text"
@@ -446,4 +461,3 @@ export default function GamePage({ params }: { params: Promise<{ mapId: string }
     </div>
   );
 }
-

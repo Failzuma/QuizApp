@@ -15,16 +15,16 @@ import { useToast } from "@/hooks/use-toast";
 
 // Define interfaces for our data
 interface AdminMap {
-  id: string;
+  id: string; // This is the map_identifier
   title: string;
   nodes: number;
   quizzes: number;
 }
 
 interface AdminQuiz {
-    id: string;
-    mapId: string;
-    nodeId: string;
+    id: string; // question_id
+    mapId: string; // map_identifier
+    nodeId: string; // node_id from the DB
     question: string;
     type: string;
     options: string[];
@@ -137,8 +137,15 @@ export default function AdminPage() {
 
     const payload = {
       ...data,
-      nodeId: data.nodeId
+      // The nodeId is now expected to be the numeric ID from the database
+      nodeId: parseInt(data.nodeId, 10),
     };
+
+     if (isNaN(payload.nodeId)) {
+        toast({ title: "Invalid Input", description: "Node ID must be a valid number.", variant: "destructive" });
+        return;
+    }
+
 
     console.log('Sending new quiz data to API:', payload);
 
@@ -218,6 +225,7 @@ export default function AdminPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Map Title</TableHead>
+                      <TableHead>Map Identifier</TableHead>
                       <TableHead>Nodes</TableHead>
                       <TableHead>Quizzes</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -228,6 +236,7 @@ export default function AdminPage() {
                         maps.map((map) => (
                           <TableRow key={map.id}>
                             <TableCell className="font-medium">{map.title}</TableCell>
+                            <TableCell className="font-mono">{map.id}</TableCell>
                             <TableCell>{map.nodes}</TableCell>
                              <TableCell>{map.quizzes}</TableCell>
                             <TableCell className="text-right space-x-2">
@@ -245,7 +254,7 @@ export default function AdminPage() {
                         ))
                     ) : (
                         <TableRow>
-                            <TableCell colSpan={4} className="text-center h-24">
+                            <TableCell colSpan={5} className="text-center h-24">
                                 Belum ada peta yang dibuat.
                             </TableCell>
                         </TableRow>

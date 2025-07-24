@@ -21,24 +21,26 @@ const verifyToken = (token: string): { userId: number } | null => {
 export async function GET() {
     try {
         // We group by the map_identifier to get a list of unique maps.
-        const mapsData = await prisma.mapNode.groupBy({
-            by: ['map_identifier'],
+        const mapsData = await prisma.mapNode.findMany({
+            distinct: ['map_identifier'],
+            select: {
+                map_identifier: true,
+                title: true, // Also fetch the title of one of the nodes as the map title
+            },
             orderBy: {
                 map_identifier: 'asc'
             }
         });
 
+
         if (!mapsData) {
             return NextResponse.json([]);
         }
 
-        // We can fetch one node for each map to get more details if needed,
-        // but for the dashboard, the identifier is enough to build the links.
-        // We'll add dummy descriptions for now.
         const maps = mapsData.map(map => ({
             id: map.map_identifier,
-            title: map.map_identifier.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            description: `An interactive quiz map about ${map.map_identifier.replace(/_/g, ' ')}.`,
+            title: map.title || map.map_identifier.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            description: `An interactive quiz map about ${map.title || map.map_identifier.replace(/_/g, ' ')}.`,
             subject: 'General Knowledge',
             difficulty: 'Medium'
         }));
@@ -98,7 +100,8 @@ export async function POST(request: Request) {
             message: 'Map blueprint created successfully. Add the background image to public/assets/images/backgrounds/',
             map: {
                 map_identifier: newMapNode.map_identifier,
-                title: newMapNode.title
+                title: newMapNode.title,
+                node_id: newMapNode.node_id
             } 
         }, { status: 201 });
 
