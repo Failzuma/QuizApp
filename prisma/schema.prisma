@@ -10,7 +10,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model User {
   user_id       Int       @id @default(autoincrement())
   username      String    @unique
@@ -18,17 +17,40 @@ model User {
   password_hash String
   created_at    DateTime  @default(now())
   answers       Answer[]
+  room          Room?     @relation(fields: [roomId], references: [room_id])
+  roomId        Int?
+}
+
+model Map {
+  map_id          Int      @id @default(autoincrement())
+  map_identifier  String   @unique
+  title           String
+  created_at      DateTime @default(now())
+  nodes           MapNode[]
+  obstacles       MapObstacle[]
 }
 
 model MapNode {
   node_id        Int        @id @default(autoincrement())
-  map_identifier String     // e.g., "english_grammar_1"
-  title          String
-  content        String
-  posX           Float      @default(0)
-  posY           Float      @default(0)
+  map_identifier String
+  title          String?
+  content        String?
+  posX           Int?
+  posY           Int?
+  created_at     DateTime   @default(now())
   questions      Question[]
-  MapObstacle    MapObstacle[] // Relation to obstacles
+  map            Map        @relation(fields: [map_identifier], references: [map_identifier])
+}
+
+model MapObstacle {
+  obstacle_id    Int      @id @default(autoincrement())
+  map_identifier String
+  posX           Int
+  posY           Int
+  width          Int
+  height         Int
+  created_at     DateTime @default(now())
+  map            Map      @relation(fields: [map_identifier], references: [map_identifier])
 }
 
 model Question {
@@ -36,7 +58,8 @@ model Question {
   node_id        Int
   question_text  String
   correct_answer String
-  options        Json?    // e.g., ["Option A", "Option B"]
+  options        Json?
+  created_at     DateTime @default(now())
   mapNode        MapNode  @relation(fields: [node_id], references: [node_id])
   answers        Answer[]
 }
@@ -52,14 +75,11 @@ model Answer {
   question          Question  @relation(fields: [question_id], references: [question_id])
 }
 
-model MapObstacle {
-  obstacle_id    Int    @id @default(autoincrement())
-  map_identifier String
-  posX           Float
-  posY           Float
-  width          Float
-  height         Float
-  mapNode        MapNode @relation(fields: [map_identifier], references: [map_identifier], onDelete: Cascade, onUpdate: Cascade)
-
-  @@index([map_identifier])
+model Room {
+  room_id       Int      @id @default(autoincrement())
+  map_id        Int
+  room_code     String   @unique
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  participants  User[]
 }

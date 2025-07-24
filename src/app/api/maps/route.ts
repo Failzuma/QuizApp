@@ -17,21 +17,18 @@ const verifyToken = (token: string): { userId: number } | null => {
     }
 };
 
-// This endpoint fetches all unique map identifiers to be displayed on the dashboard.
+// This endpoint fetches all unique maps to be displayed on the dashboard.
 export async function GET() {
     try {
-        // We group by the map_identifier to get a list of unique maps.
-        const mapsData = await prisma.mapNode.findMany({
-            distinct: ['map_identifier'],
+        const mapsData = await prisma.map.findMany({
             select: {
                 map_identifier: true,
-                title: true, // Also fetch the title of one of the nodes as the map title
+                title: true,
             },
             orderBy: {
-                map_identifier: 'asc'
+                created_at: 'desc'
             }
         });
-
 
         if (!mapsData) {
             return NextResponse.json([]);
@@ -39,12 +36,11 @@ export async function GET() {
 
         const maps = mapsData.map(map => ({
             id: map.map_identifier,
-            title: map.title || map.map_identifier.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            description: `An interactive quiz map about ${map.title || map.map_identifier.replace(/_/g, ' ')}.`,
-            subject: 'General Knowledge',
-            difficulty: 'Medium'
+            title: map.title,
+            description: `An interactive quiz map about ${map.title}.`,
+            subject: 'General Knowledge', // This can be dynamic in the future
+            difficulty: 'Medium' // This can be dynamic in the future
         }));
-
 
         return NextResponse.json(maps);
 
@@ -77,7 +73,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'A map must have between 1 and 10 nodes.' }, { status: 400 });
         }
 
-        const existingMap = await prisma.mapNode.findFirst({
+        const existingMap = await prisma.map.findUnique({
             where: { map_identifier: mapIdentifier }
         });
 
@@ -85,20 +81,32 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: `Map with identifier "${mapIdentifier}" already exists.` }, { status: 409 });
         }
 
-        // Use a transaction to create the map's nodes and obstacles atomically
-        const transactionResult = await prisma.$transaction(async (tx) => {
-            const createdNodes = await tx.mapNode.createMany({
-                data: nodes.map(node => ({
+        // Use a transaction to create the map, its nodes, and obstacles atomically
+        const newMap = await prisma.$transaction(async (tx) => {
+            // 1. Create the Map record
+            const createdMap = await tx.map.create({
+                data: {
                     map_identifier: mapIdentifier,
-                    title: 'Interactive Node', 
-                    content: 'Quiz awaits here.',
-                    posX: node.posX,
-                    posY: node.posY,
-                }))
+                    title: title,
+                }
             });
 
+            // 2. Create MapNodes linked to the new map
+            if (nodes && nodes.length > 0) {
+                await tx.mapNode.createMany({
+                    data: nodes.map(node => ({
+                        map_identifier: mapIdentifier,
+                        title: 'Interactive Node', 
+                        content: 'Quiz awaits here.',
+                        posX: node.posX,
+                        posY: node.posY,
+                    }))
+                });
+            }
+
+            // 3. Create MapObstacles linked to the new map
             if (obstacles && obstacles.length > 0) {
-                const createdObstacles = await tx.mapObstacle.createMany({
+                await tx.mapObstacle.createMany({
                     data: obstacles.map((obstacle: any) => ({
                         map_identifier: mapIdentifier,
                         posX: obstacle.posX,
@@ -107,30 +115,29 @@ export async function POST(request: Request) {
                         height: obstacle.height,
                     }))
                 });
-                return { nodes: createdNodes, obstacles: createdObstacles };
             }
 
-            return { nodes: createdNodes, obstacles: { count: 0 } };
+            return createdMap;
         });
 
-        // Fetch the created nodes to return them in the response
-        const newNodes = await prisma.mapNode.findMany({
+        // Fetch the created nodes to return them in the response for confirmation
+        const finalNodes = await prisma.mapNode.findMany({
             where: { map_identifier: mapIdentifier }
         });
 
         return NextResponse.json({ 
-            message: `Map '${title}' created successfully with ${transactionResult.nodes.count} nodes and ${transactionResult.obstacles.count} obstacles.`,
+            message: `Map '${title}' created successfully with ${finalNodes.length} nodes and ${obstacles?.length || 0} obstacles.`,
             map: {
-                map_identifier: mapIdentifier,
-                title: title,
-                nodes: newNodes
+                ...newMap,
+                nodes: finalNodes
             } 
         }, { status: 201 });
 
     } catch (error: any) {
         console.error('API /maps POST Error:', error);
         if (error.code === 'P2002') { 
-             return NextResponse.json({ error: `Map with identifier "${request.json().then(d => d.mapIdentifier)}" already exists.` }, { status: 409 });
+             const failedIdentifier = (await request.json()).mapIdentifier;
+             return NextResponse.json({ error: `Map with identifier "${failedIdentifier}" already exists.` }, { status: 409 });
         }
         return NextResponse.json({ error: "Gagal memproses permintaan", details: error.message }, { status: 500 });
     }
