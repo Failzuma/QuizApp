@@ -12,7 +12,7 @@ const verifyToken = (token: string): { userId: number } | null => {
             return null;
         }
         return jwt.verify(token, process.env.JWT_SECRET!) as { userId: number };
-    } catch (error) => {
+    } catch (error) {
         return null;
     }
 };
@@ -109,4 +109,3 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Gagal memproses permintaan", details: error.message }, { status: 500 });
     }
 }
-
