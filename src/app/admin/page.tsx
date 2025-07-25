@@ -62,13 +62,12 @@ export default function AdminPage() {
 
         // Fetch Quizzes (Playable Instances)
         const quizzesResponse = await fetch('/api/quizzes', { headers });
+        const quizzesData = await quizzesResponse.json();
         if(quizzesResponse.ok) {
-            const quizzesData = await quizzesResponse.json();
-            // The API now returns a simpler list of quizzes
+            // The public API returns a full format, we need to adapt it for admin display
             const formattedQuizzes = quizzesData.map((q: any) => ({ id: q.id, title: q.title, mapId: q.mapId }));
             setQuizzes(formattedQuizzes);
         } else {
-            const quizzesData = await quizzesResponse.json();
             throw new Error(quizzesData.error || 'Failed to fetch quizzes');
         }
         
@@ -106,7 +105,6 @@ export default function AdminPage() {
         const result = await response.json();
         if (response.ok) {
             toast({ title: "Success!", description: `Map '${result.map.title}' blueprint has been created.` });
-            // The API response for map creation is now more detailed
             const newMap: AdminMap = { id: result.map.map_identifier, title: result.map.title, nodes: result.map.nodes.length };
             setMaps(prevMaps => [...prevMaps, newMap]);
             setIsAddMapModalOpen(false);
@@ -314,5 +312,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-    

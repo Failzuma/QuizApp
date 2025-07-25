@@ -97,6 +97,11 @@ export async function POST(request: Request) {
                    console.warn(`Skipping question for node ${nodeId} due to incomplete data.`);
                    continue;
                 }
+                
+                // Validate that the correct answer is one of the options provided
+                if (!qData.options.some((opt: { text: string }) => opt.text === qData.correct_answer)) {
+                     throw new Error(`Correct answer for question ${i+1} ("${qData.question_text}") is not listed in its options.`);
+                }
 
                 // Create the question first
                 const createdQuestion = await tx.question.create({

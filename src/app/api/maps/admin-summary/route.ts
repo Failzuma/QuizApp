@@ -5,13 +5,26 @@ import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
 
+const verifyToken = (token: string): { userId: number; username: string } | null => {
+    try {
+        if (!process.env.JWT_SECRET) return null;
+        return jwt.verify(token, process.env.JWT_SECRET) as { userId: number; username: string };
+    } catch (error) {
+        return null;
+    }
+};
+
 // This is a protected endpoint for admin use only
 export async function GET(request: Request) {
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        return NextResponse.json({ error: 'Unauthorized: No token provided' }, { status: 401 });
     }
-    // In a real app, you'd also verify the user's role is 'admin' from the token
+    
+    const decodedToken = verifyToken(token);
+    if (!decodedToken || decodedToken.username !== 'admin') {
+         return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
     
     try {
         const maps = await prisma.map.findMany({

@@ -12,7 +12,7 @@ const verifyToken = (token: string): { userId: number } | null => {
             return null;
         }
         return jwt.verify(token, process.env.JWT_SECRET!) as { userId: number };
-    } catch (error) {
+    } catch (error) => {
         return null;
     }
 };
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     }
 
     try {
-        const { mapIdentifier, title, nodes, obstacles } = await request.json();
+        const { mapIdentifier, title, nodes } = await request.json();
 
         if (!mapIdentifier || !title || !Array.isArray(nodes)) {
             return NextResponse.json({ error: 'Map identifier, title, and a nodes array are required' }, { status: 400 });
@@ -89,18 +89,6 @@ export async function POST(request: Request) {
                 });
             }
 
-            if (obstacles && obstacles.length > 0) {
-                await tx.mapObstacle.createMany({
-                    data: obstacles.map((obstacle: any) => ({
-                        map_identifier: mapIdentifier,
-                        posX: obstacle.posX,
-                        posY: obstacle.posY,
-                        width: obstacle.width,
-                        height: obstacle.height,
-                    }))
-                });
-            }
-
             return createdMap;
         });
 
@@ -121,3 +109,4 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Gagal memproses permintaan", details: error.message }, { status: 500 });
     }
 }
+

@@ -26,21 +26,12 @@ const nodePositionSchema = z.object({
   posY: z.coerce.number().min(0, 'Y position must be a positive number.'),
 });
 
-const obstacleSchema = z.object({
-  posX: z.coerce.number().min(0, 'X position must be a positive number.'),
-  posY: z.coerce.number().min(0, 'Y position must be a positive number.'),
-  width: z.coerce.number().min(1, 'Width must be at least 1.'),
-  height: z.coerce.number().min(1, 'Height must be at least 1.'),
-});
-
-
 const mapBlueprintSchema = z.object({
   title: z.string().min(3, 'Map title must be at least 3 characters.'),
   mapIdentifier: z.string()
     .min(3, 'Identifier must be at least 3 characters.')
     .regex(/^[a-z0-9_]+$/, 'Identifier can only contain lowercase letters, numbers, and underscores.'),
   nodes: z.array(nodePositionSchema).min(1, 'At least one node is required.').max(10, 'You can add a maximum of 10 nodes.'),
-  obstacles: z.array(obstacleSchema).optional(),
 });
 
 export type MapBlueprintFormData = z.infer<typeof mapBlueprintSchema>;
@@ -64,7 +55,6 @@ export function AddMapModal({ isOpen, onClose, onSubmit }: AddMapModalProps) {
       title: '',
       mapIdentifier: '',
       nodes: [{ posX: 100, posY: 100 }],
-      obstacles: [],
     },
   });
 
@@ -73,18 +63,12 @@ export function AddMapModal({ isOpen, onClose, onSubmit }: AddMapModalProps) {
     name: 'nodes',
   });
   
-  const { fields: obstacleFields, append: appendObstacle, remove: removeObstacle } = useFieldArray({
-      control,
-      name: 'obstacles',
-  });
-
   React.useEffect(() => {
     if (!isOpen) {
       reset({
         title: '',
         mapIdentifier: '',
         nodes: [{ posX: 100, posY: 100 }],
-        obstacles: [],
       });
     }
   }, [isOpen, reset]);
@@ -99,7 +83,7 @@ export function AddMapModal({ isOpen, onClose, onSubmit }: AddMapModalProps) {
         <DialogHeader>
           <DialogTitle>Add New Map Blueprint</DialogTitle>
           <DialogDescription>
-            Create a map blueprint by defining its title, a unique identifier, and the positions of each interactive node and obstacle.
+            Create a map blueprint by defining its title, a unique identifier, and the positions of each interactive node.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6 pt-4">
@@ -151,49 +135,6 @@ export function AddMapModal({ isOpen, onClose, onSubmit }: AddMapModalProps) {
             )}
           </div>
           
-          <Separator />
-
-          {/* Obstacles Section */}
-          <div className="space-y-4">
-            <Label className="text-lg font-semibold">Obstacle Areas</Label>
-            {errors.obstacles?.root && <p className="text-sm text-destructive">{errors.obstacles.root.message}</p>}
-            <div className="space-y-4 max-h-60 overflow-y-auto pr-2">
-              {obstacleFields.map((field, index) => (
-                <div key={field.id} className="p-4 border rounded-lg space-y-3 relative bg-muted/50">
-                   <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2 text-destructive hover:text-destructive" onClick={() => removeObstacle(index)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                  <h4 className="font-medium">Obstacle {index + 1}</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="space-y-1">
-                        <Label htmlFor={`obstacles.${index}.posX`}>X</Label>
-                        <Input {...register(`obstacles.${index}.posX`)} type="number" placeholder="e.g., 200"/>
-                        {errors.obstacles?.[index]?.posX && <p className="text-sm text-destructive">{errors.obstacles[index]?.posX?.message}</p>}
-                     </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`obstacles.${index}.posY`}>Y</Label>
-                        <Input {...register(`obstacles.${index}.posY`)} type="number" placeholder="e.g., 400"/>
-                        {errors.obstacles?.[index]?.posY && <p className="text-sm text-destructive">{errors.obstacles[index]?.posY?.message}</p>}
-                     </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`obstacles.${index}.width`}>Width</Label>
-                        <Input {...register(`obstacles.${index}.width`)} type="number" placeholder="e.g., 50"/>
-                        {errors.obstacles?.[index]?.width && <p className="text-sm text-destructive">{errors.obstacles[index]?.width?.message}</p>}
-                     </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`obstacles.${index}.height`}>Height</Label>
-                        <Input {...register(`obstacles.${index}.height`)} type="number" placeholder="e.g., 10"/>
-                        {errors.obstacles?.[index]?.height && <p className="text-sm text-destructive">{errors.obstacles[index]?.height?.message}</p>}
-                     </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => appendObstacle({ posX: 0, posY: 0, width: 50, height: 50 })}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Add Obstacle Area
-            </Button>
-          </div>
-
           <Alert variant="default">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Important: Map Background Image</AlertTitle>
