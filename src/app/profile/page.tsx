@@ -185,7 +185,7 @@ export default function ProfilePage() {
                      ))}
                    </ul>
                  ) : (
-                   <p className="text-muted-foreground">Belum ada riwayat sesi. Mulai mainkan sebuah peta!</p>
+                   <p className="text-muted-foreground">Belum ada riwayat sesi. Mulai mainkan sebuah kuis untuk melihat progres Anda di sini!</p>
                  )}
                </CardContent>
              </Card>

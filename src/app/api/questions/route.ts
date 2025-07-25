@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, QuestionType } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 
@@ -15,21 +15,35 @@ const verifyToken = (token: string): { userId: number } | null => {
     }
 };
 
-// Zod schema for validation
 const optionSchema = z.object({
   text: z.string().min(1, 'Option text cannot be empty.'),
+  image_url: z.string().url().nullable().optional(),
 });
 
 const questionFormSchema = z.object({
+  question_type: z.nativeEnum(QuestionType),
   question_text: z.string().min(10, 'Question text must be at least 10 characters.'),
-  options: z.array(optionSchema).min(2, 'Must have at least 2 options.').max(5, 'Cannot have more than 5 options.'),
+  image_url: z.string().url().nullable().optional(),
+  options: z.array(optionSchema).optional(),
   correct_answer: z.string().min(1, 'You must specify the correct answer.'),
-}).refine(data => data.options.some(opt => opt.text === data.correct_answer), {
+}).refine(data => {
+    if (data.question_type === 'MULTIPLE_CHOICE' || data.question_type === 'IMAGE_MATCH') {
+        return data.options && data.options.length >= 2;
+    }
+    return true;
+}, {
+    message: "This question type requires at least 2 options.",
+    path: ["options"],
+}).refine(data => {
+    if (data.question_type === 'MULTIPLE_CHOICE') {
+        return data.options?.some(opt => opt.text === data.correct_answer);
+    }
+    return true;
+}, {
     message: "The correct answer must exactly match one of the options.",
     path: ["correct_answer"],
 });
 
-// GET all questions from the global question bank
 export async function GET(request: Request) {
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token || !verifyToken(token)) {
@@ -40,6 +54,7 @@ export async function GET(request: Request) {
             select: {
                 question_id: true,
                 question_text: true,
+                question_type: true
             },
             orderBy: {
                 created_at: 'desc'
@@ -52,7 +67,6 @@ export async function GET(request: Request) {
     }
 }
 
-// POST a new question to the global question bank
 export async function POST(request: Request) {
     const token = request.headers.get('authorization')?.split(' ')[1];
     const decoded = token ? verifyToken(token) : null;
@@ -68,17 +82,20 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Invalid data', details: validation.error.flatten() }, { status: 400 });
         }
 
-        const { question_text, options, correct_answer } = validation.data;
+        const { question_type, question_text, image_url, options, correct_answer } = validation.data;
 
         const newQuestion = await prisma.question.create({
             data: {
                 question_text,
+                question_type,
                 correct_answer,
-                options: {
+                image_url: image_url,
+                options: (question_type === 'MULTIPLE_CHOICE' || question_type === 'IMAGE_MATCH') && options ? {
                     create: options.map(opt => ({
-                        option_text: opt.text
+                        option_text: opt.text,
+                        image_url: opt.image_url,
                     }))
-                }
+                } : undefined,
             },
             select: {
                 question_id: true,

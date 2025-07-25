@@ -53,8 +53,10 @@ model MapObstacle {
 model Question {
   question_id    Int      @id @default(autoincrement())
   question_text  String
+  question_type  QuestionType @default(MULTIPLE_CHOICE)
   correct_answer String
   created_at     DateTime @default(now())
+  image_url      String?
   options        Option[]
   quizzes        QuizQuestion[]
   Answer         Answer[]
@@ -64,6 +66,7 @@ model Option {
   option_id   Int      @id @default(autoincrement())
   question_id Int
   option_text String
+  image_url   String?
   question    Question @relation(fields: [question_id], references: [question_id], onDelete: Cascade)
 }
 
@@ -121,4 +124,10 @@ model RoomParticipant {
   room          Room     @relation(fields: [room_id], references: [room_id], onDelete: Cascade)
   user          User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
   @@id([room_id, user_id])
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  SHORT_ANSWER
+  IMAGE_MATCH
 }
