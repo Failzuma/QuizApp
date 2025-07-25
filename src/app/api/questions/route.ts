@@ -1,7 +1,8 @@
 
 import { NextResponse } from 'next/server';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
+import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
@@ -14,7 +15,21 @@ const verifyToken = (token: string): { userId: number } | null => {
     }
 };
 
-// GET all questions in the global bank
+// Zod schema for validation
+const optionSchema = z.object({
+  text: z.string().min(1, 'Option text cannot be empty.'),
+});
+
+const questionFormSchema = z.object({
+  question_text: z.string().min(10, 'Question text must be at least 10 characters.'),
+  options: z.array(optionSchema).min(2, 'Must have at least 2 options.').max(5, 'Cannot have more than 5 options.'),
+  correct_answer: z.string().min(1, 'You must specify the correct answer.'),
+}).refine(data => data.options.some(opt => opt.text === data.correct_answer), {
+    message: "The correct answer must exactly match one of the options.",
+    path: ["correct_answer"],
+});
+
+// GET all questions from the global question bank
 export async function GET(request: Request) {
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token || !verifyToken(token)) {
@@ -37,42 +52,38 @@ export async function GET(request: Request) {
     }
 }
 
-
+// POST a new question to the global question bank
 export async function POST(request: Request) {
     const token = request.headers.get('authorization')?.split(' ')[1];
-    if (!token || !verifyToken(token)) {
+    const decoded = token ? verifyToken(token) : null;
+    if (!decoded) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     try {
-        const { question_text, options, correct_answer } = await request.json();
+        const body = await request.json();
+        const validation = questionFormSchema.safeParse(body);
 
-        if (!question_text || !options || !correct_answer) {
-        return NextResponse.json({ error: 'question_text, options, and correct_answer are required' }, { status: 400 });
+        if (!validation.success) {
+            return NextResponse.json({ error: 'Invalid data', details: validation.error.flatten() }, { status: 400 });
         }
-        
-        if (!Array.isArray(options) || options.length < 2) {
-            return NextResponse.json({ error: 'options must be an array with at least 2 items' }, { status: 400 });
-        }
-        
-        if (!options.some((opt: { text: string }) => opt.text === correct_answer)) {
-            return NextResponse.json({ error: 'The correct_answer must exactly match one of the provided options.'}, { status: 400 });
-        }
+
+        const { question_text, options, correct_answer } = validation.data;
 
         const newQuestion = await prisma.question.create({
-        data: {
-            question_text: question_text,
-            correct_answer: correct_answer,
-            options: {
-                create: options.map((opt: {text: string}) => ({
-                    option_text: opt.text
-                }))
+            data: {
+                question_text,
+                correct_answer,
+                options: {
+                    create: options.map(opt => ({
+                        option_text: opt.text
+                    }))
+                }
+            },
+            select: {
+                question_id: true,
+                question_text: true,
             }
-        },
-        select: {
-            question_id: true,
-            question_text: true,
-        }
         });
 
         return NextResponse.json({ message: 'Question created successfully', question: newQuestion }, { status: 201 });

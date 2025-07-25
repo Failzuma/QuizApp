@@ -16,12 +16,19 @@ import { Label } from "@/components/ui/label"
 // Represents a question assigned to a node for this specific quiz
 interface QuizNodeData {
     node_id: number;
-    node_title: string; // From the map blueprint
     question_id: number;
     question_text: string;
     options: { option_id: number; option_text: string }[];
 }
 
+// Represents the entire data payload for the game client
+interface GameData {
+    quiz_id: number;
+    title: string;
+    description: string | null;
+    map_identifier: string;
+    questions: QuizNodeData[];
+}
 
 // --- MAIN COMPONENT ---
 export default function GamePage({ params }: { params: { quizId: string } }) {
@@ -36,9 +43,9 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [phaserInitialized, setPhaserInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentMapId, setCurrentMapId] = useState<string | null>(null);
-  const [currentQuizTitle, setCurrentQuizTitle] = useState<string>('Loading...');
-  const [allQuizNodeData, setAllQuizNodeData] = useState<QuizNodeData[]>([]);
+  
+  // Game data state
+  const [gameData, setGameData] = useState<GameData | null>(null);
 
   // --- Refs ---
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
@@ -47,64 +54,41 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
 
   // --- Data Fetching Effect ---
    useEffect(() => {
-       const fetchQuizAndMapData = async () => {
+       const fetchGameData = async () => {
            if (!quizId) return;
            setIsLoading(true);
-
            try {
-                // 1. Fetch quiz details to find out title and which map to use
-                const quizResponse = await fetch(`/api/quizzes/${quizId}`);
-                if (!quizResponse.ok) throw new Error('Quiz not found');
-                const quizData = await quizResponse.json();
-                
-                const mapId = quizData.map.map_identifier;
-                setCurrentMapId(mapId);
-                setCurrentQuizTitle(quizData.title);
-
-                // 2. Fetch all nodes and questions for that specific quiz instance
-                const quizQuestionsResponse = await fetch(`/api/maps/${mapId}/quizzes`);
-                if (!quizQuestionsResponse.ok) throw new Error(`Failed to fetch quiz questions for ${mapId}`);
-                const quizNodesFromApi: any[] = await quizQuestionsResponse.json();
-                
-                // This assumes the API at /api/maps/[mapId]/quizzes gives us the node with its questions. Let's adjust the state type.
-                const formattedQuizData = quizNodesFromApi
-                    .filter(node => node.questions.length > 0)
-                    .map(node => ({
-                        node_id: node.node_id,
-                        node_title: node.title,
-                        question_id: node.questions[0].question_id,
-                        question_text: node.questions[0].question_text,
-                        options: node.questions[0].options
-                    }));
-
-
-                setAllQuizNodeData(formattedQuizData);
-                setRemainingNodesCount(formattedQuizData.length);
-
+                // Fetch ALL game data in one go from the new endpoint
+                const response = await fetch(`/api/quizzes/${quizId}`);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Quiz not found');
+                }
+                const data: GameData = await response.json();
+                setGameData(data);
+                setRemainingNodesCount(data.questions.length);
            } catch (error: any) {
-                console.error("[React] Error fetching quiz data:", error);
-                toast({ title: "Failed to load quiz data", description: error.message || "Please try again later.", variant: "destructive" });
+                console.error("[React] Error fetching game data:", error);
+                toast({ title: "Failed to load quiz", description: error.message, variant: "destructive" });
            } finally {
                 setIsLoading(false);
            }
        };
-       fetchQuizAndMapData();
+       fetchGameData();
    }, [quizId, toast]);
     
   // --- Game Interaction Callbacks ---
   const handleNodeInteraction: NodeInteractionCallback = useCallback((nodeDbId) => {
-    const quizNode = allQuizNodeData.find(n => n.node_id === nodeDbId);
+    const quizNode = gameData?.questions.find(n => n.node_id === nodeDbId);
     if (quizNode) {
         setCurrentQuizNode(quizNode);
         setShowQuiz(true);
-        setSelectedAnswer(null); // Reset selection
+        setSelectedAnswer(null);
         if (sceneInstanceRef.current) sceneInstanceRef.current.disablePlayerInput();
     } else {
-        // This can happen if a node exists on the map but has no question assigned in this quiz.
-        // It should ideally not be interactive, but as a fallback:
         console.warn(`[React] Interaction with node ${nodeDbId}, but no question data found for this quiz.`);
     }
-  }, [allQuizNodeData]);
+  }, [gameData]);
 
   const handleNodesCountUpdate: NodesCountCallback = useCallback((count) => {
       setRemainingNodesCount(count);
@@ -114,13 +98,19 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
     if (sceneInstanceRef.current?.removeNode) {
         sceneInstanceRef.current.removeNode(nodeDbId);
         // Also remove from local state to prevent re-interaction
-        setAllQuizNodeData(prevData => prevData.filter(q => q.node_id !== nodeDbId));
+        setGameData(prevData => {
+            if (!prevData) return null;
+            return {
+                ...prevData,
+                questions: prevData.questions.filter(q => q.node_id !== nodeDbId)
+            };
+        });
     }
   }, []);
 
   // --- Phaser Game Initialization ---
    useEffect(() => {
-        if (!currentMapId || allQuizNodeData.length === 0 || !gameContainerRef.current || phaserInitialized) {
+        if (!gameData || !gameContainerRef.current || phaserInitialized) {
           return;
         }
 
@@ -131,14 +121,15 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
             const { default: MainScene } = await import('@/game/scenes/MainScene');
             const mainSceneInstance = new MainScene();
             
-            const nodesPosResponse = await fetch(`/api/maps/${currentMapId}/nodes`);
+            // We need the node positions from the separate node API
+            const nodesPosResponse = await fetch(`/api/maps/${gameData.map_identifier}/nodes`);
             const nodesPosData = await nodesPosResponse.json();
 
-            // Create the data structure Phaser needs, using only nodes that have questions in this quiz
-            const phaserNodeSetupData: NodeData[] = allQuizNodeData.map(quizNode => {
-                const posData = nodesPosData.find((p: any) => p.node_id === quizNode.node_id);
+            // Create the data structure Phaser needs, matching questions with their positions
+            const phaserNodeSetupData: NodeData[] = gameData.questions.map(qNode => {
+                const posData = nodesPosData.find((p: any) => p.node_id === qNode.node_id);
                 return {
-                    nodeId: quizNode.node_id,
+                    nodeId: qNode.node_id,
                     x: posData?.posX ?? 0,
                     y: posData?.posY ?? 0
                 }
@@ -158,7 +149,7 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
                   const scene = bootedGame.scene.getScene('MainScene') as MainSceneType;
                   if (scene?.initScene) {
                     scene.initScene(
-                        { mapId: currentMapId! },
+                        { mapId: gameData.map_identifier },
                         handleNodeInteraction,
                         handleNodesCountUpdate,
                         phaserNodeSetupData
@@ -178,7 +169,7 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
             gameInstanceRef.current = null;
             setPhaserInitialized(false);
         };
-      }, [currentMapId, allQuizNodeData, phaserInitialized, handleNodeInteraction, handleNodesCountUpdate]);
+      }, [gameData, phaserInitialized, handleNodeInteraction, handleNodesCountUpdate]);
     
     // --- UI Event Handlers ---
     const handleAnswerSubmit = async () => {
@@ -188,14 +179,10 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
         // This is where you would send the answer to the backend
         // For now, we simulate a check.
         await new Promise(resolve => setTimeout(resolve, 500)); 
-
-        // const isCorrect = selectedAnswer === "CORRECT_ANSWER_FROM_DB";
-        // For demonstration, let's just assume it's correct and remove the node.
-        // In a real app, you'd fetch the correct answer and compare.
         
         toast({
             title: "Answer Submitted!",
-            description: "Your answer has been recorded.", // Or "Correct!" / "Incorrect."
+            description: "Your answer has been recorded.",
         });
         
         removeNodeFromScene(currentQuizNode.node_id);
@@ -221,6 +208,14 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
              </div>
         )
     }
+    
+    if (!gameData) {
+        return (
+             <div className="flex flex-col h-screen items-center justify-center">
+                <p className="mt-4 text-destructive">Could not load game data. The quiz might not exist or an error occurred.</p>
+             </div>
+        )
+    }
 
     return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -231,8 +226,8 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
         {/* UI Elements */}
         <div className="absolute top-4 left-4 z-10 flex flex-col gap-4 w-full max-w-xs sm:max-w-sm">
             <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
-                <h1 className="text-lg font-bold text-primary truncate">{currentQuizTitle}</h1>
-                <p className="text-xs text-muted-foreground">Map: <span className="font-mono bg-muted px-1 py-0.5 rounded">{currentMapId}</span></p>
+                <h1 className="text-lg font-bold text-primary truncate">{gameData.title}</h1>
+                <p className="text-xs text-muted-foreground">Map: <span className="font-mono bg-muted px-1 py-0.5 rounded">{gameData.map_identifier}</span></p>
             </div>
             <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow flex items-center justify-between">
                 <div className="flex items-center gap-2">

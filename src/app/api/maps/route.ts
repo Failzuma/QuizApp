@@ -1,7 +1,8 @@
 
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import jwt from 'jsonwebtoken';
+import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
@@ -17,8 +18,18 @@ const verifyToken = (token: string): { userId: number } | null => {
     }
 };
 
-// This endpoint is no longer used for the public dashboard. 
-// It can be repurposed for admin-specific map data fetching if needed.
+const nodePositionSchema = z.object({
+  title: z.string().optional(),
+  posX: z.coerce.number().min(0),
+  posY: z.coerce.number().min(0),
+});
+
+const mapBlueprintSchema = z.object({
+  title: z.string().min(3),
+  mapIdentifier: z.string().min(3).regex(/^[a-z0-9_]+$/),
+  nodes: z.array(nodePositionSchema).min(1).max(20),
+});
+
 export async function GET() {
     try {
         const mapsData = await prisma.map.findMany({
@@ -39,7 +50,6 @@ export async function GET() {
 }
 
 
-// POST to create a new map blueprint with nodes and obstacles
 export async function POST(request: Request) {
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token || !verifyToken(token)) {
@@ -47,19 +57,14 @@ export async function POST(request: Request) {
     }
 
     try {
-        const { mapIdentifier, title, nodes } = await request.json();
+        const body = await request.json();
+        const validation = mapBlueprintSchema.safeParse(body);
+        
+        if (!validation.success) {
+            return NextResponse.json({ error: 'Invalid data provided', details: validation.error.flatten() }, { status: 400 });
+        }
 
-        if (!mapIdentifier || !title || !Array.isArray(nodes)) {
-            return NextResponse.json({ error: 'Map identifier, title, and a nodes array are required' }, { status: 400 });
-        }
-        
-        if (!/^[a-z0-9_]+$/.test(mapIdentifier)) {
-            return NextResponse.json({ error: 'Map Identifier can only contain lowercase letters, numbers, and underscores.' }, { status: 400 });
-        }
-        
-        if (nodes.length === 0 || nodes.length > 10) {
-            return NextResponse.json({ error: 'A map must have between 1 and 10 nodes.' }, { status: 400 });
-        }
+        const { mapIdentifier, title, nodes } = validation.data;
 
         const existingMap = await prisma.map.findUnique({
             where: { map_identifier: mapIdentifier }
@@ -69,43 +74,35 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: `Map with identifier "${mapIdentifier}" already exists.` }, { status: 409 });
         }
 
-        const newMap = await prisma.$transaction(async (tx) => {
-            const createdMap = await tx.map.create({
-                data: {
-                    map_identifier: mapIdentifier,
-                    title: title,
-                }
-            });
-
-            if (nodes && nodes.length > 0) {
-                await tx.mapNode.createMany({
-                    data: nodes.map(node => ({
-                        map_identifier: mapIdentifier,
-                        title: 'Interactive Node', 
-                        content: 'Quiz awaits here.',
+        const newMap = await prisma.map.create({
+            data: {
+                map_identifier: mapIdentifier,
+                title: title,
+                nodes: {
+                    create: nodes.map(node => ({
+                        title: node.title,
                         posX: node.posX,
                         posY: node.posY,
                     }))
-                });
+                }
+            },
+            include: {
+                nodes: true // Include the created nodes in the response
             }
-
-            return createdMap;
-        });
-
-        const finalNodes = await prisma.mapNode.findMany({
-            where: { map_identifier: mapIdentifier }
         });
 
         return NextResponse.json({ 
             message: `Map '${title}' created successfully.`,
-            map: {
-                ...newMap,
-                nodes: finalNodes
-            } 
+            map: newMap
         }, { status: 201 });
 
     } catch (error: any) {
         console.error('API /maps POST Error:', error);
+         if (error instanceof Prisma.PrismaClientKnownRequestError) {
+             if (error.code === 'P2002') { // Unique constraint failed
+                return NextResponse.json({ error: `Map with identifier "${(body as any).mapIdentifier}" already exists.` }, { status: 409 });
+             }
+         }
         return NextResponse.json({ error: "Gagal memproses permintaan", details: error.message }, { status: 500 });
     }
 }

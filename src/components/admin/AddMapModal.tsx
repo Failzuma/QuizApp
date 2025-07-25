@@ -22,6 +22,7 @@ import { AlertCircle, PlusCircle, Trash2 } from 'lucide-react';
 import { Separator } from '../ui/separator';
 
 const nodePositionSchema = z.object({
+  title: z.string().optional(),
   posX: z.coerce.number().min(0, 'X position must be a positive number.'),
   posY: z.coerce.number().min(0, 'Y position must be a positive number.'),
 });
@@ -31,7 +32,7 @@ const mapBlueprintSchema = z.object({
   mapIdentifier: z.string()
     .min(3, 'Identifier must be at least 3 characters.')
     .regex(/^[a-z0-9_]+$/, 'Identifier can only contain lowercase letters, numbers, and underscores.'),
-  nodes: z.array(nodePositionSchema).min(1, 'At least one node is required.').max(10, 'You can add a maximum of 10 nodes.'),
+  nodes: z.array(nodePositionSchema).min(1, 'At least one node is required.').max(20, 'You can add a maximum of 20 nodes.'),
 });
 
 export type MapBlueprintFormData = z.infer<typeof mapBlueprintSchema>;
@@ -54,7 +55,7 @@ export function AddMapModal({ isOpen, onClose, onSubmit }: AddMapModalProps) {
     defaultValues: {
       title: '',
       mapIdentifier: '',
-      nodes: [{ posX: 100, posY: 100 }],
+      nodes: [{ title: 'Node 1', posX: 100, posY: 100 }],
     },
   });
 
@@ -68,7 +69,7 @@ export function AddMapModal({ isOpen, onClose, onSubmit }: AddMapModalProps) {
       reset({
         title: '',
         mapIdentifier: '',
-        nodes: [{ posX: 100, posY: 100 }],
+        nodes: [{ title: 'Node 1', posX: 100, posY: 100 }],
       });
     }
   }, [isOpen, reset]);
@@ -83,7 +84,7 @@ export function AddMapModal({ isOpen, onClose, onSubmit }: AddMapModalProps) {
         <DialogHeader>
           <DialogTitle>Add New Map Blueprint</DialogTitle>
           <DialogDescription>
-            Create a map blueprint by defining its title, a unique identifier, and the positions of each interactive node.
+            Create a map template by defining its title, a unique identifier, and the positions of each interactive node.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6 pt-4">
@@ -102,7 +103,6 @@ export function AddMapModal({ isOpen, onClose, onSubmit }: AddMapModalProps) {
           
           <Separator />
 
-          {/* Nodes Section */}
           <div className="space-y-4">
             <Label className="text-lg font-semibold">Node Positions</Label>
             {errors.nodes?.root && <p className="text-sm text-destructive">{errors.nodes.root.message}</p>}
@@ -113,6 +113,10 @@ export function AddMapModal({ isOpen, onClose, onSubmit }: AddMapModalProps) {
                     <Trash2 className="h-4 w-4" />
                   </Button>
                   <h4 className="font-medium">Node {index + 1}</h4>
+                   <div className="space-y-1">
+                        <Label htmlFor={`nodes.${index}.title`}>Node Title (Optional)</Label>
+                        <Input {...register(`nodes.${index}.title`)} placeholder={`Optional description for Node ${index + 1}`}/>
+                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <Label htmlFor={`nodes.${index}.posX`}>Position X <span className="text-destructive">*</span></Label>
@@ -128,8 +132,8 @@ export function AddMapModal({ isOpen, onClose, onSubmit }: AddMapModalProps) {
                 </div>
               ))}
             </div>
-            {nodeFields.length < 10 && (
-              <Button type="button" variant="outline" size="sm" onClick={() => appendNode({ posX: 0, posY: 0 })}>
+            {nodeFields.length < 20 && (
+              <Button type="button" variant="outline" size="sm" onClick={() => appendNode({ title: `Node ${nodeFields.length + 1}`, posX: 0, posY: 0 })}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Node Position
               </Button>
             )}

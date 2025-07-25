@@ -1,102 +1,122 @@
-
-// datasource db defines the database connection details.
+// File: prisma/schema.prisma
 datasource db {
-  provider = "postgresql" // Or your preferred database provider
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
-// generator client specifies that Prisma Client should be generated.
 generator client {
   provider = "prisma-client-js"
 }
 
-// -- AUTH & USER --
 model User {
-  user_id     Int       @id @default(autoincrement())
-  username    String    @unique
-  email       String    @unique
-  password_hash String
-  created_at  DateTime  @default(now())
-  role        String    @default("player") // e.g., 'player', 'admin'
-  answers     Answer[]
+  user_id         Int      @id @default(autoincrement())
+  username        String   @unique
+  email           String   @unique
+  password_hash   String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  answers         Answer[]
+  created_quizzes Quiz[]
+  room_participants RoomParticipant[]
 }
 
-// -- MAP & CONTENT STRUCTURE --
+// A Map is just a visual template and node coordinates. It is NOT playable.
 model Map {
-  map_id          Int      @id @default(autoincrement())
-  map_identifier  String   @unique // e.g., "dunia_tenses_1"
-  title           String   
+  map_identifier  String   @id
+  title           String
   created_at      DateTime @default(now())
-  
   nodes           MapNode[]
   quizzes         Quiz[]
+  obstacles       MapObstacle[]
 }
 
 model MapNode {
-  node_id         Int      @id @default(autoincrement())
-  map_identifier  String
-  title           String?
-  content         String?
-  posX            Float?
-  posY            Float?
-  
-  map             Map        @relation(fields: [map_identifier], references: [map_identifier])
-  questions       Question[]
+  node_id        Int      @id @default(autoincrement())
+  map_identifier String
+  title          String?
+  posX           Int
+  posY           Int
+  map            Map      @relation(fields: [map_identifier], references: [map_identifier], onDelete: Cascade)
+  quiz_questions QuizQuestion[]
 }
 
 model MapObstacle {
-  obstacle_id     Int    @id @default(autoincrement())
+  obstacle_id     Int     @id @default(autoincrement())
   map_identifier  String
-  posX            Float
-  posY            Float
-  width           Float
-  height          Float
+  posX            Int
+  posY            Int
+  width           Int
+  height          Int
+  map             Map     @relation(fields: [map_identifier], references: [map_identifier], onDelete: Cascade)
 }
 
-// -- QUIZ & QUESTIONS --
-
-// Represents a playable instance of a quiz
-model Quiz {
-  quiz_id         Int      @id @default(autoincrement())
-  map_identifier  String
-  title           String   // e.g., "Latihan Harian Tenses", "Ujian Tengah Semester"
-  created_at      DateTime @default(now())
-
-  map             Map      @relation(fields: [map_identifier], references: [map_identifier])
-}
-
+// A Question is a reusable entity in a global question bank.
 model Question {
-  question_id     Int      @id @default(autoincrement())
-  node_id         Int
-  question_text   String
-  correct_answer  String
-  created_at      DateTime @default(now())
-  
-  mapNode         MapNode  @relation(fields: [node_id], references: [node_id])
-  options         Option[]
-  answers         Answer[]
+  question_id    Int      @id @default(autoincrement())
+  question_text  String
+  correct_answer String
+  created_at     DateTime @default(now())
+  options        Option[]
+  quizzes        QuizQuestion[]
 }
 
 model Option {
-  option_id       Int      @id @default(autoincrement())
-  question_id     Int
-  option_text     String
+  option_id   Int      @id @default(autoincrement())
+  question_id Int
+  option_text String
+  question    Question @relation(fields: [question_id], references: [question_id], onDelete: Cascade)
+}
+
+// A Quiz is the playable "instance" or "session". It uses a Map as a background.
+model Quiz {
+  quiz_id      Int      @id @default(autoincrement())
+  title        String
+  description  String?
+  map_identifier String 
+  creator_id   Int? // Can be nullable if system-generated
+  created_at   DateTime @default(now())
   
-  question        Question @relation(fields: [question_id], references: [question_id], onDelete: Cascade)
+  map          Map            @relation(fields: [map_identifier], references: [map_identifier])
+  creator      User?          @relation(fields: [creator_id], references: [user_id])
+  questions    QuizQuestion[]
 }
 
+// This is the JOIN table linking a Quiz, a Question, and a Node together.
+model QuizQuestion {
+  quiz_id      Int
+  question_id  Int
+  node_id      Int
+  
+  quiz         Quiz     @relation(fields: [quiz_id], references: [quiz_id], onDelete: Cascade)
+  question     Question @relation(fields: [question_id], references: [question_id], onDelete: Cascade)
+  node         MapNode  @relation(fields: [node_id], references: [node_id], onDelete: Cascade)
+  
+  @@id([quiz_id, question_id, node_id])
+}
 
-// -- USER PROGRESS & RESULTS --
 model Answer {
-  answer_id         Int      @id @default(autoincrement())
-  user_id           Int
-  question_id       Int
-  selected_option   String
-  is_correct        Boolean
-  waktu_pengerjaan  DateTime @default(now())
-
-  user              User     @relation(fields: [user_id], references: [user_id])
-  question          Question @relation(fields: [question_id], references: [question_id])
+  answer_id       Int      @id @default(autoincrement())
+  user_id         Int
+  question_id     Int
+  user_answer     String
+  is_correct      Boolean
+  waktu_pengerjaan DateTime @default(now())
+  user            User     @relation(fields: [user_id], references: [user_id])
 }
 
-    
+model Room {
+  room_id         Int      @id @default(autoincrement())
+  room_name       String   @unique
+  map_identifier  String
+  created_at      DateTime @default(now())
+  participants    RoomParticipant[]
+}
+
+model RoomParticipant {
+  room_id       Int
+  user_id       Int
+  join_time     DateTime @default(now())
+  current_score Int      @default(0)
+  room          Room     @relation(fields: [room_id], references: [room_id], onDelete: Cascade)
+  user          User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  @@id([room_id, user_id])
+}
