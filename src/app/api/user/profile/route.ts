@@ -32,18 +32,20 @@ export async function GET(request: Request) {
     }
     const sessionHistory = await prisma.answer.findMany({
         where: { user_id: decoded.userId },
-        select: {
+        include: {
             question: {
-                select: {
-                    mapNode: {
-                        select: {
-                            map_identifier: true,
+                include: {
+                    quizzes: {
+                        include: {
+                            quiz: {
+                                include: {
+                                    map: true
+                                }
+                            }
                         }
                     }
                 }
-            },
-            is_correct: true,
-            waktu_pengerjaan: true,
+            }
         },
         orderBy: {
             waktu_pengerjaan: 'desc'
@@ -51,12 +53,16 @@ export async function GET(request: Request) {
     });
 
     // A simplified transformation for the frontend
-    const simplifiedHistory = sessionHistory.map(h => ({
-        id: h.waktu_pengerjaan.toISOString(),
-        mapTitle: h.question?.mapNode?.map_identifier || 'Unknown Map',
-        score: h.is_correct ? 100 : 0, // Placeholder score logic
-        date: h.waktu_pengerjaan.toISOString(),
-    }));
+    const simplifiedHistory = sessionHistory.map(h => {
+        const quizQuestion = h.question.quizzes[0];
+        const mapTitle = quizQuestion?.quiz.map.title || 'Unknown Map';
+        return {
+            id: h.waktu_pengerjaan.toISOString(),
+            mapTitle: mapTitle,
+            score: h.is_correct ? 100 : 0, // Placeholder score logic
+            date: h.waktu_pengerjaan.toISOString(),
+        }
+    });
 
 
     return NextResponse.json({ user, history: simplifiedHistory });

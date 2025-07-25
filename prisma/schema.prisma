@@ -57,6 +57,7 @@ model Question {
   created_at     DateTime @default(now())
   options        Option[]
   quizzes        QuizQuestion[]
+  Answer         Answer[]
 }
 
 model Option {
@@ -101,6 +102,7 @@ model Answer {
   is_correct      Boolean
   waktu_pengerjaan DateTime @default(now())
   user            User     @relation(fields: [user_id], references: [user_id])
+  question        Question @relation(fields: [question_id], references: [question_id])
 }
 
 model Room {
