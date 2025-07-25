@@ -8,13 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, PlusCircle, Edit, Trash2, Map, MapPin, HelpCircle, Users, Loader2, BookOpen, FileQuestion } from 'lucide-react';
-import { AddQuizModal, QuizFormData } from '@/components/admin/AddQuizModal';
-import { AddMapModal, MapBlueprintFormData } from '@/components/admin/AddMapModal';
+import { Download, PlusCircle, Edit, Trash2, Map, BookOpen, Users, Loader2, FileQuestion } from 'lucide-react';
+import { AddQuizModal, type QuizWithQuestionsFormData } from '@/components/admin/AddQuizModal';
+import { AddMapModal, type MapBlueprintFormData } from '@/components/admin/AddMapModal';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { AddQuestionModal } from '@/components/admin/AddQuestionModal';
-import type { QuestionFormData } from '@/components/admin/AddQuestionModal';
+
 
 interface AdminMap {
   id: string;
@@ -28,11 +27,6 @@ interface AdminQuiz {
     mapId: string;
 }
 
-interface AdminQuestion {
-    id: number;
-    text: string;
-}
-
 interface SessionResult {
     id: string;
     mapTitle: string;
@@ -44,13 +38,11 @@ interface SessionResult {
 export default function AdminPage() {
   const [isAddQuizModalOpen, setIsAddQuizModalOpen] = React.useState(false);
   const [isAddMapModalOpen, setIsAddMapModalOpen] = React.useState(false);
-  const [isAddQuestionModalOpen, setIsAddQuestionModalOpen] = React.useState(false);
 
   const [quizzes, setQuizzes] = React.useState<AdminQuiz[]>([]);
   const [maps, setMaps] = React.useState<AdminMap[]>([]);
-  const [questions, setQuestions] = React.useState<AdminQuestion[]>([]);
   const [sessionResults, setSessionResults] = React.useState<SessionResult[]>([]);
-  const [isLoading, setIsLoading] = React.useState({ maps: true, quizzes: true, questions: true, results: true });
+  const [isLoading, setIsLoading] = React.useState({ maps: true, quizzes: true, results: true });
   const { toast } = useToast();
   const router = useRouter();
 
@@ -58,7 +50,7 @@ export default function AdminPage() {
     const token = localStorage.getItem('token');
     const fetchData = async () => {
       try {
-        setIsLoading(prev => ({ ...prev, maps: true, quizzes: true, questions: true, results: true }));
+        setIsLoading(prev => ({ ...prev, maps: true, quizzes: true, results: true }));
         
         const headers = { 'Authorization': `Bearer ${token}` };
 
@@ -70,30 +62,21 @@ export default function AdminPage() {
 
         // Fetch Quizzes (Playable Instances)
         const quizzesResponse = await fetch('/api/quizzes', { headers });
-        const quizzesData = await quizzesResponse.json();
         if(quizzesResponse.ok) {
+            const quizzesData = await quizzesResponse.json();
+            // The API now returns a simpler list of quizzes
             const formattedQuizzes = quizzesData.map((q: any) => ({ id: q.id, title: q.title, mapId: q.mapId }));
             setQuizzes(formattedQuizzes);
         } else {
+            const quizzesData = await quizzesResponse.json();
             throw new Error(quizzesData.error || 'Failed to fetch quizzes');
-        }
-
-
-        // Fetch Questions (Question Bank)
-        const questionsResponse = await fetch('/api/questions', { headers });
-        const questionsData = await questionsResponse.json();
-        if (questionsResponse.ok) {
-            const formattedQuestions = questionsData.map((q: any) => ({ id: q.question_id, text: q.question_text }));
-            setQuestions(formattedQuestions);
-        } else {
-             throw new Error(questionsData.error || 'Failed to fetch questions');
         }
         
       } catch (error: any) {
         console.error("Failed to fetch admin data", error);
         toast({ title: "Error", description: error.message || "Could not load admin data.", variant: "destructive" });
       } finally {
-        setIsLoading(prev => ({ ...prev, maps: false, quizzes: false, questions: false, results: false }));
+        setIsLoading(prev => ({ ...prev, maps: false, quizzes: false, results: false }));
       }
     };
     if (token) {
@@ -123,7 +106,8 @@ export default function AdminPage() {
         const result = await response.json();
         if (response.ok) {
             toast({ title: "Success!", description: `Map '${result.map.title}' blueprint has been created.` });
-            const newMap: AdminMap = { id: result.map.map_identifier, title: result.map.title, nodes: data.nodes.length };
+            // The API response for map creation is now more detailed
+            const newMap: AdminMap = { id: result.map.map_identifier, title: result.map.title, nodes: result.map.nodes.length };
             setMaps(prevMaps => [...prevMaps, newMap]);
             setIsAddMapModalOpen(false);
         } else {
@@ -134,7 +118,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleAddQuiz = async (data: QuizFormData) => {
+  const handleAddQuiz = async (data: QuizWithQuestionsFormData) => {
     const token = localStorage.getItem('token');
     try {
         const response = await fetch('/api/quizzes', {
@@ -145,9 +129,9 @@ export default function AdminPage() {
         const result = await response.json();
         if (response.ok) {
             toast({ title: "Success!", description: `Quiz '${result.quiz.title}' has been created.` });
-            const newQuiz: AdminQuiz = { id: result.quiz.quiz_id, title: result.quiz.title, mapId: result.quiz.map_identifier };
+            const newQuiz: AdminQuiz = { id: result.quiz.quiz_id, title: result.quiz.title, mapId: data.mapId };
             setQuizzes(prevQuizzes => [...prevQuizzes, newQuiz]);
-            setIsAddQuizModalOpen(false);
+            setIsAddQuizModalOpen(false); // Close modal on success
         } else {
             toast({ title: "Failed to Create Quiz", description: result.error || "An unknown error occurred.", variant: "destructive" });
         }
@@ -156,27 +140,6 @@ export default function AdminPage() {
     }
   };
 
-  const handleAddQuestion = async (data: QuestionFormData) => {
-    const token = localStorage.getItem('token');
-    try {
-        const response = await fetch('/api/questions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(data)
-        });
-        const result = await response.json();
-        if (response.ok) {
-            toast({ title: "Success!", description: `Question has been added to the bank.` });
-            const newQuestion: AdminQuestion = { id: result.question.question_id, text: result.question.question_text };
-            setQuestions(prevQuestions => [...prevQuestions, newQuestion]);
-            setIsAddQuestionModalOpen(false);
-        } else {
-            toast({ title: "Failed to Create Question", description: result.error || "An unknown error occurred.", variant: "destructive" });
-        }
-    } catch (error) {
-        toast({ title: "Network Error", description: "Could not connect to the server.", variant: "destructive" });
-    }
-  };
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -185,10 +148,9 @@ export default function AdminPage() {
         <h1 className="text-3xl font-bold mb-6 text-primary">Admin Panel</h1>
 
         <Tabs defaultValue="quizzes">
-          <TabsList className="mb-6 grid w-full grid-cols-2 sm:grid-cols-4 h-auto">
+          <TabsList className="mb-6 grid w-full grid-cols-2 sm:grid-cols-3 h-auto">
             <TabsTrigger value="quizzes"><BookOpen className="mr-2" /> Playable Quizzes</TabsTrigger>
             <TabsTrigger value="maps"><Map className="mr-2" /> Map Blueprints</TabsTrigger>
-            <TabsTrigger value="questions"><HelpCircle className="mr-2" /> Question Bank</TabsTrigger>
             <TabsTrigger value="results"><Users className="mr-2" /> Session Results</TabsTrigger>
           </TabsList>
 
@@ -224,7 +186,7 @@ export default function AdminPage() {
                             <TableCell>{map.nodes}</TableCell>
                             <TableCell className="text-right space-x-2">
                                <Button variant="ghost" size="icon" title="Edit Obstacles" onClick={() => router.push(`/admin/maps/${map.id}/editor`)}>
-                                   <MapPin />
+                                   <Map />
                                </Button>
                               <Button variant="ghost" size="icon" title="Edit Map Info" disabled>
                                 <Edit />
@@ -253,7 +215,7 @@ export default function AdminPage() {
             <CardHeader>
                 <div className="flex justify-between items-center">
                    <CardTitle>Manage Playable Quizzes</CardTitle>
-                   <Button size="sm" onClick={() => setIsAddQuizModalOpen(true)} disabled={maps.length === 0}>
+                   <Button size="sm" onClick={() => setIsAddQuizModalOpen(true)} disabled={maps.length === 0 || maps.every(m => m.nodes === 0)}>
                        <PlusCircle className="mr-2" /> Add New Quiz
                     </Button>
                 </div>
@@ -277,9 +239,9 @@ export default function AdminPage() {
                             <TableCell className="font-medium max-w-sm truncate">{quiz.title}</TableCell>
                             <TableCell className="font-mono">{quiz.mapId}</TableCell>
                             <TableCell className="text-right space-x-2">
-                             <Button variant="ghost" size="icon" title="Assign Questions" onClick={() => router.push(`/admin/quizzes/${quiz.id}/questions`)}>
-                                   <FileQuestion />
-                               </Button>
+                             <Button variant="ghost" size="icon" title="Edit Questions (Coming Soon)" disabled>
+                                <FileQuestion />
+                              </Button>
                             <Button variant="ghost" size="icon" title="Edit Quiz" disabled>
                                 <Edit />
                             </Button>
@@ -299,57 +261,6 @@ export default function AdminPage() {
                 </TableBody>
                 </Table>
             </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="questions">
-            <Card>
-                <CardHeader>
-                    <div className="flex justify-between items-center">
-                        <CardTitle>Global Question Bank</CardTitle>
-                        <Button size="sm" onClick={() => setIsAddQuestionModalOpen(true)}>
-                           <PlusCircle className="mr-2" /> Add New Question
-                        </Button>
-                    </div>
-                    <CardDescription>A central repository of all questions that can be assigned to quiz nodes.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Question ID</TableHead>
-                        <TableHead>Question Text</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {isLoading.questions ? (
-                          <TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-                      ) : questions.length > 0 ? (
-                          questions.map((question) => (
-                            <TableRow key={question.id}>
-                              <TableCell className="font-mono">{question.id}</TableCell>
-                              <TableCell className="font-medium max-w-md truncate">{question.text}</TableCell>
-                              <TableCell className="text-right space-x-2">
-                                <Button variant="ghost" size="icon" title="Edit Question" disabled>
-                                  <Edit />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Delete Question" disabled>
-                                  <Trash2 />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                      ) : (
-                          <TableRow>
-                              <TableCell colSpan={3} className="text-center h-24">
-                                  No questions in the bank yet.
-                              </TableCell>
-                          </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
             </Card>
           </TabsContent>
 
@@ -398,13 +309,7 @@ export default function AdminPage() {
           isOpen={isAddQuizModalOpen}
           onClose={() => setIsAddQuizModalOpen(false)}
           onSubmit={handleAddQuiz}
-          availableMaps={maps}
-       />
-
-       <AddQuestionModal
-          isOpen={isAddQuestionModalOpen}
-          onClose={() => setIsAddQuestionModalOpen(false)}
-          onSubmit={handleAddQuestion}
+          availableMaps={maps.filter(m => m.nodes > 0)}
        />
     </div>
   );

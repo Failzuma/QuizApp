@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 // Represents a question assigned to a node for this specific quiz
 interface QuizNodeData {
     node_id: number;
+    node_title: string; // From the map blueprint
     question_id: number;
     question_text: string;
     options: { option_id: number; option_text: string }[];
@@ -61,12 +62,24 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
                 setCurrentQuizTitle(quizData.title);
 
                 // 2. Fetch all nodes and questions for that specific quiz instance
-                const quizQuestionsResponse = await fetch(`/api/quizzes/${quizId}/questions`);
+                const quizQuestionsResponse = await fetch(`/api/maps/${mapId}/quizzes`);
                 if (!quizQuestionsResponse.ok) throw new Error(`Failed to fetch quiz questions for ${mapId}`);
-                const quizNodesFromApi: QuizNodeData[] = await quizQuestionsResponse.json();
+                const quizNodesFromApi: any[] = await quizQuestionsResponse.json();
                 
-                setAllQuizNodeData(quizNodesFromApi);
-                setRemainingNodesCount(quizNodesFromApi.length);
+                // This assumes the API at /api/maps/[mapId]/quizzes gives us the node with its questions. Let's adjust the state type.
+                const formattedQuizData = quizNodesFromApi
+                    .filter(node => node.questions.length > 0)
+                    .map(node => ({
+                        node_id: node.node_id,
+                        node_title: node.title,
+                        question_id: node.questions[0].question_id,
+                        question_text: node.questions[0].question_text,
+                        options: node.questions[0].options
+                    }));
+
+
+                setAllQuizNodeData(formattedQuizData);
+                setRemainingNodesCount(formattedQuizData.length);
 
            } catch (error: any) {
                 console.error("[React] Error fetching quiz data:", error);
@@ -87,9 +100,11 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
         setSelectedAnswer(null); // Reset selection
         if (sceneInstanceRef.current) sceneInstanceRef.current.disablePlayerInput();
     } else {
-        toast({ title: "Node Error", description: "This node doesn't have a question assigned for this quiz.", variant: "destructive" });
+        // This can happen if a node exists on the map but has no question assigned in this quiz.
+        // It should ideally not be interactive, but as a fallback:
+        console.warn(`[React] Interaction with node ${nodeDbId}, but no question data found for this quiz.`);
     }
-  }, [allQuizNodeData, toast]);
+  }, [allQuizNodeData]);
 
   const handleNodesCountUpdate: NodesCountCallback = useCallback((count) => {
       setRemainingNodesCount(count);
@@ -98,6 +113,8 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
   const removeNodeFromScene = useCallback((nodeDbId: number) => {
     if (sceneInstanceRef.current?.removeNode) {
         sceneInstanceRef.current.removeNode(nodeDbId);
+        // Also remove from local state to prevent re-interaction
+        setAllQuizNodeData(prevData => prevData.filter(q => q.node_id !== nodeDbId));
     }
   }, []);
 
@@ -114,11 +131,10 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
             const { default: MainScene } = await import('@/game/scenes/MainScene');
             const mainSceneInstance = new MainScene();
             
-            // We need to get the actual positions from a different endpoint now
             const nodesPosResponse = await fetch(`/api/maps/${currentMapId}/nodes`);
             const nodesPosData = await nodesPosResponse.json();
 
-            // Create the data structure Phaser needs
+            // Create the data structure Phaser needs, using only nodes that have questions in this quiz
             const phaserNodeSetupData: NodeData[] = allQuizNodeData.map(quizNode => {
                 const posData = nodesPosData.find((p: any) => p.node_id === quizNode.node_id);
                 return {
@@ -183,13 +199,12 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
         });
         
         removeNodeFromScene(currentQuizNode.node_id);
-        closeQuiz();
+        closeQuiz(false); // don't re-enable node
         setIsSubmitting(false);
     };
 
-    const closeQuiz = () => {
-        if (currentQuizNode) {
-            // Re-enable the node in case the user closes without answering
+    const closeQuiz = (reEnableNode = true) => {
+        if (reEnableNode && currentQuizNode) {
             if(sceneInstanceRef.current) sceneInstanceRef.current.reEnableNode(currentQuizNode.node_id);
         }
         setShowQuiz(false);
@@ -251,7 +266,7 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
                         </RadioGroup>
 
                         <div className="flex justify-end gap-2 mt-6">
-                            <Button variant="outline" onClick={closeQuiz} disabled={isSubmitting}>
+                            <Button variant="outline" onClick={() => closeQuiz(true)} disabled={isSubmitting}>
                                 Cancel
                             </Button>
                             <Button onClick={handleAnswerSubmit} disabled={!selectedAnswer || isSubmitting}>
@@ -266,5 +281,3 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
     </div>
   );
 }
-
-    

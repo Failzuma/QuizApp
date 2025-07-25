@@ -1,31 +1,14 @@
 
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
 
-const verifyToken = (token: string): { userId: number } | null => {
-    try {
-        if (!process.env.JWT_SECRET) return null;
-        return jwt.verify(token, process.env.JWT_SECRET) as { userId: number };
-    } catch (error) {
-        return null;
-    }
-};
-
-// GET details for a specific quiz instance
+// GET details for a specific quiz instance, including its associated map.
 export async function GET(
   request: Request,
   { params }: { params: { quizId: string } }
 ) {
-  // This can be a public or protected route depending on needs
-  // For now, let's assume it's public for players to fetch quiz info.
-  // const token = request.headers.get('authorization')?.split(' ')[1];
-  // if (!token || !verifyToken(token)) {
-  //   return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-  // }
-
   try {
     const quizId = parseInt(params.quizId, 10);
 

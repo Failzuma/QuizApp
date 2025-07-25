@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 }
 
 
-// POST to create a new Quiz Instance (for admins)
+// POST to create a new Quiz with all its questions
 export async function POST(request: Request) {
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token || !verifyToken(token)) {
@@ -62,34 +62,87 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
-        console.log("Received data for new quiz instance:", body);
-        
-        // This endpoint now creates a QUIZ INSTANCE, not a question
-        const { title, mapId } = body;
+        const { title, mapId, questions } = body;
 
-        if (!title || !mapId) {
-            return NextResponse.json({ error: 'Title and mapId are required to create a quiz.' }, { status: 400 });
+        if (!title || !mapId || !Array.isArray(questions) || questions.length === 0) {
+            return NextResponse.json({ error: 'Title, mapId, and a non-empty array of questions are required.' }, { status: 400 });
         }
 
-        // Check if the map exists
-        const mapExists = await prisma.map.findUnique({
-            where: { map_identifier: mapId }
-        });
-        if (!mapExists) {
-            return NextResponse.json({ error: `Map with identifier '${mapId}' not found.` }, { status: 404 });
-        }
+        // --- Transactional Creation ---
+        const newQuiz = await prisma.$transaction(async (tx) => {
+            // 1. Create the Quiz instance
+            const createdQuiz = await tx.quiz.create({
+                data: {
+                    title: title,
+                    map_identifier: mapId,
+                }
+            });
 
-        const newQuiz = await prisma.quiz.create({
-            data: {
-                title: title,
-                map_identifier: mapId,
+            // 2. Get the nodes for the selected map to associate questions with
+            const mapNodes = await tx.mapNode.findMany({
+                where: { map_identifier: mapId },
+                orderBy: { node_id: 'asc' }, // Ensure consistent ordering
+            });
+
+            if (mapNodes.length < questions.length) {
+                throw new Error("The number of questions exceeds the number of nodes available on the selected map.");
             }
+
+            // 3. Create all Questions and their Options, then create the QuizQuestion association
+            for (let i = 0; i < questions.length; i++) {
+                const qData = questions[i];
+                const nodeId = mapNodes[i].node_id;
+
+                if (!qData.question_text || !qData.correct_answer || !qData.options || qData.options.length < 2) {
+                   console.warn(`Skipping question for node ${nodeId} due to incomplete data.`);
+                   continue;
+                }
+
+                // Create the question first
+                const createdQuestion = await tx.question.create({
+                    data: {
+                        question_text: qData.question_text,
+                        correct_answer: qData.correct_answer,
+                        // This question is created for a specific quiz, so it's not global
+                    }
+                });
+
+                // Create options for this question
+                await tx.option.createMany({
+                    data: qData.options.map((opt: { text: string }) => ({
+                        question_id: createdQuestion.question_id,
+                        option_text: opt.text,
+                    }))
+                });
+
+                // Associate the newly created question with the quiz and a node
+                await tx.quizQuestion.create({
+                    data: {
+                        quiz_id: createdQuiz.quiz_id,
+                        node_id: nodeId,
+                        question_id: createdQuestion.question_id,
+                    }
+                });
+            }
+
+            return createdQuiz;
         });
 
         return NextResponse.json({ message: 'Kuis berhasil dibuat', quiz: newQuiz }, { status: 201 });
 
     } catch (error: any) {
         console.error('API /quizzes POST Error:', error);
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            // e.g., if mapId doesn't exist
+            if (error.code === 'P2003') { 
+                 const fieldName = (error.meta as any)?.field_name;
+                 if (typeof fieldName === 'string' && fieldName.includes('map_identifier')) {
+                    return NextResponse.json({ error: `Map with identifier '${mapId}' not found.` }, { status: 404 });
+                 }
+            }
+        }
         return NextResponse.json({ error: "Gagal memproses permintaan", details: error.message }, { status: 500 });
     }
 }
+
+    
