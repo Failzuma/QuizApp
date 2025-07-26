@@ -16,14 +16,11 @@ export async function GET(
         return NextResponse.json({ error: 'Invalid Quiz ID format' }, { status: 400 });
     }
 
-    // 1. Fetch the quiz details including its map identifier
+    // 1. Fetch the quiz details including its map relation
     const quiz = await prisma.quiz.findUnique({
       where: { quiz_id: quizId },
-      select: {
-        quiz_id: true,
-        title: true,
-        description: true,
-        map_identifier: true,
+      include: {
+        map: true, // Include the full map data
       }
     });
 
@@ -37,9 +34,9 @@ export async function GET(
         quiz_id: quizId,
       },
       include: {
-        question: { // Include the full question data
+        question: { 
           include: {
-            options: true, // And its options
+            options: true, 
           }
         },
       },
@@ -47,16 +44,21 @@ export async function GET(
 
     // 3. Format the response for the game client
     const formattedResponse = {
-        ...quiz,
+        quiz_id: quiz.quiz_id,
+        title: quiz.title,
+        description: quiz.description,
+        map: { // Send a dedicated map object
+            map_identifier: quiz.map.map_identifier,
+            title: quiz.map.title,
+        },
         questions: linkedQuestions.map(link => ({
-            node_id: link.node_id, // The node this question is on
+            node_id: link.node_id,
             question_id: link.question.question_id,
             question_text: link.question.question_text,
             options: link.question.options.map(opt => ({
                 option_id: opt.option_id,
                 option_text: opt.option_text,
             })),
-            // IMPORTANT: Do NOT send the correct_answer to the client
         })),
     };
     

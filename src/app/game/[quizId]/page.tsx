@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, CheckSquare, Move, ZoomIn, ZoomOut } from 'lucide-react';
+import { Loader2, CheckSquare, ZoomIn, ZoomOut } from 'lucide-react';
 import type MainSceneType from '@/game/scenes/MainScene';
 import type { NodeInteractionCallback, NodesCountCallback, SceneInitData } from '@/game/scenes/MainScene';
 import { useToast } from "@/hooks/use-toast";
@@ -23,11 +23,15 @@ interface QuizNodeData {
     options: { option_id: number; option_text: string }[];
 }
 
+// Updated GameData interface to reflect the new API response structure
 interface GameData {
     quiz_id: number;
     title: string;
     description: string | null;
-    map_identifier: string;
+    map: {
+        map_identifier: string;
+        title: string;
+    };
     questions: QuizNodeData[];
 }
 
@@ -122,6 +126,7 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
   }, []);
 
    useEffect(() => {
+        // Now, we wait for both gameData and user data before initializing
         if (!gameData || !user || !gameContainerRef.current || phaserInitialized) {
           return;
         }
@@ -132,8 +137,9 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
             const { default: MainScene } = await import('@/game/scenes/MainScene');
             const mainSceneInstance = new MainScene();
 
+            // The init data now passes the whole gameData object
             const sceneInitData: SceneInitData = {
-                quizId: String(gameData.quiz_id),
+                gameData,
                 playerCharacterUrl: user.character,
             };
 
@@ -149,6 +155,7 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
               callbacks: {
                 postBoot: (bootedGame) => {
                   const scene = bootedGame.scene.getScene('MainScene') as MainSceneType;
+                  // The initScene callback now only needs the init data and callbacks
                   scene?.initScene(sceneInitData, handleNodeInteraction, handleNodesCountUpdate);
                   sceneInstanceRef.current = scene;
                 }
@@ -187,10 +194,8 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
         }
 
         return () => {
-            if (joystickManagerRef.current) {
-                joystickManagerRef.current.destroy();
-                joystickManagerRef.current = null;
-            }
+            joystickManagerRef.current?.destroy();
+            joystickManagerRef.current = null;
         };
     }, [isMobile, phaserInitialized]);
     
@@ -242,7 +247,7 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
         <div className="absolute top-4 left-4 z-10 flex flex-col gap-4 w-full max-w-xs sm:max-w-sm">
             <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
                 <h1 className="text-lg font-bold text-primary truncate">{gameData.title}</h1>
-                <p className="text-xs text-muted-foreground">Peta: <span className="font-mono bg-muted px-1 py-0.5 rounded">{gameData.map_identifier}</span></p>
+                <p className="text-xs text-muted-foreground">Peta: <span className="font-mono bg-muted px-1 py-0.5 rounded">{gameData.map.title}</span></p>
             </div>
             <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow flex items-center justify-between">
                 <div className="flex items-center gap-2">
