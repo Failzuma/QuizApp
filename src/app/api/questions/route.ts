@@ -44,6 +44,8 @@ const questionFormSchema = z.object({
     path: ["correct_answer"],
 });
 
+const questionsArraySchema = z.array(questionFormSchema);
+
 export async function GET(request: Request) {
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token || !verifyToken(token)) {
@@ -76,37 +78,72 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
-        const validation = questionFormSchema.safeParse(body);
 
-        if (!validation.success) {
-            return NextResponse.json({ error: 'Invalid data', details: validation.error.flatten() }, { status: 400 });
-        }
-
-        const { question_type, question_text, image_url, options, correct_answer } = validation.data;
-
-        const newQuestion = await prisma.question.create({
-            data: {
-                question_text,
-                question_type,
-                correct_answer,
-                image_url: image_url,
-                options: (question_type === 'MULTIPLE_CHOICE' || question_type === 'IMAGE_MATCH') && options ? {
-                    create: options.map(opt => ({
-                        option_text: opt.text,
-                        image_url: opt.image_url,
-                    }))
-                } : undefined,
-            },
-            select: {
-                question_id: true,
-                question_text: true,
+        if (Array.isArray(body)) {
+            // Handle bulk creation from JSON array
+            const validation = questionsArraySchema.safeParse(body);
+            if (!validation.success) {
+                return NextResponse.json({ error: 'Invalid data in questions array', details: validation.error.flatten() }, { status: 400 });
             }
-        });
 
-        return NextResponse.json({ message: 'Question created successfully', question: newQuestion }, { status: 201 });
+            const createdQuestions = await prisma.$transaction(
+                validation.data.map(q =>
+                    prisma.question.create({
+                        data: {
+                            question_text: q.question_text,
+                            question_type: q.question_type,
+                            correct_answer: q.correct_answer,
+                            image_url: q.image_url,
+                            options: (q.question_type === 'MULTIPLE_CHOICE' || q.question_type === 'IMAGE_MATCH') && q.options ? {
+                                create: q.options.map(opt => ({
+                                    option_text: opt.text,
+                                    image_url: opt.image_url,
+                                }))
+                            } : undefined,
+                        },
+                        select: {
+                            question_id: true,
+                            question_text: true,
+                        }
+                    })
+                )
+            );
 
+            return NextResponse.json({ message: `Successfully created ${createdQuestions.length} questions`, questions: createdQuestions }, { status: 201 });
+
+        } else {
+            // Handle single question creation
+            const validation = questionFormSchema.safeParse(body);
+
+            if (!validation.success) {
+                return NextResponse.json({ error: 'Invalid data', details: validation.error.flatten() }, { status: 400 });
+            }
+
+            const { question_type, question_text, image_url, options, correct_answer } = validation.data;
+
+            const newQuestion = await prisma.question.create({
+                data: {
+                    question_text,
+                    question_type,
+                    correct_answer,
+                    image_url: image_url,
+                    options: (question_type === 'MULTIPLE_CHOICE' || question_type === 'IMAGE_MATCH') && options ? {
+                        create: options.map(opt => ({
+                            option_text: opt.text,
+                            image_url: opt.image_url,
+                        }))
+                    } : undefined,
+                },
+                select: {
+                    question_id: true,
+                    question_text: true,
+                }
+            });
+
+            return NextResponse.json({ message: 'Question created successfully', question: newQuestion }, { status: 201 });
+        }
     } catch (error: any) {
-        console.error(`Failed to create question:`, error);
-        return NextResponse.json({ error: 'Failed to create question', details: error.message }, { status: 500 });
+        console.error(`Failed to create question(s):`, error);
+        return NextResponse.json({ error: 'Failed to create question(s)', details: error.message }, { status: 500 });
     }
 }
