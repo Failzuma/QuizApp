@@ -20,10 +20,13 @@ const optionSchema = z.object({
   image_url: z.string().url('Must be a valid URL.').nullable().optional(),
 });
 
+// Update the enum to include all valid types from your Prisma schema
+const questionTypeEnum = z.nativeEnum(QuestionType, {
+    errorMap: () => ({ message: `Invalid question_type. Must be one of: ${Object.values(QuestionType).join(', ')}`})
+});
+
 const questionFormSchema = z.object({
-  question_type: z.nativeEnum(QuestionType, {
-      errorMap: () => ({ message: `Invalid question_type. Must be one of: ${Object.values(QuestionType).join(', ')}`})
-  }),
+  question_type: questionTypeEnum,
   question_text: z.string().min(10, 'Question text must be at least 10 characters.'),
   image_url: z.string().url('Must be a valid URL.').nullable().optional(),
   options: z.array(optionSchema).optional(),
@@ -47,6 +50,29 @@ const questionFormSchema = z.object({
 });
 
 const questionsArraySchema = z.array(questionFormSchema);
+
+export async function GET(request: Request) {
+    const token = request.headers.get('authorization')?.split(' ')[1];
+    if (!token || !verifyToken(token)) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+    try {
+        const questions = await prisma.question.findMany({
+            select: {
+                question_id: true,
+                question_text: true,
+                question_type: true
+            },
+            orderBy: {
+                created_at: 'desc'
+            }
+        });
+        return NextResponse.json(questions);
+    } catch (error: any) {
+        console.error('Failed to fetch questions from bank:', error);
+        return NextResponse.json({ error: "Failed to fetch questions", details: error.message }, { status: 500 });
+    }
+}
 
 export async function POST(request: Request) {
     const token = request.headers.get('authorization')?.split(' ')[1];
@@ -75,7 +101,6 @@ export async function POST(request: Request) {
         }
 
         if (isBulk) {
-            // Handle bulk creation
             const createdQuestions = await prisma.$transaction(
                 (validation.data as z.infer<typeof questionsArraySchema>).map(q =>
                     prisma.question.create({
@@ -97,7 +122,6 @@ export async function POST(request: Request) {
             );
             return NextResponse.json({ message: `Successfully created ${createdQuestions.length} questions.`, questions: createdQuestions }, { status: 201 });
         } else {
-            // Handle single question creation
             const { question_type, question_text, image_url, options, correct_answer } = validation.data as z.infer<typeof questionFormSchema>;
             const newQuestion = await prisma.question.create({
                 data: {
@@ -118,7 +142,6 @@ export async function POST(request: Request) {
         }
     } catch (error: any) {
         console.error(`Failed to create question(s):`, error);
-        // Handle potential database errors
         return NextResponse.json({ error: 'Failed to create question(s) in the database.', details: error.message }, { status: 500 });
     }
 }
