@@ -12,11 +12,15 @@ import { List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+
 
 interface UserProfile {
   username: string;
   email: string;
   created_at: string;
+  character: string;
 }
 
 interface SessionHistoryItem {
@@ -26,10 +30,21 @@ interface SessionHistoryItem {
   date: string;
 }
 
+const characters = [
+    '/assets/images/player_placeholder_32.png',
+    '/assets/images/player2_placeholder_32.png',
+    '/assets/images/player3_placeholder_32.png',
+    '/assets/images/player4_placeholder_32.png',
+    '/assets/images/player5_placeholder_32.png'
+];
+
 export default function ProfilePage() {
   const [profile, setProfile] = React.useState<UserProfile | null>(null);
   const [history, setHistory] = React.useState<SessionHistoryItem[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [isCharacterModalOpen, setIsCharacterModalOpen] = React.useState(false);
+  const [selectedCharacter, setSelectedCharacter] = React.useState<string>('');
+
   const { toast } = useToast();
   const router = useRouter();
 
@@ -51,6 +66,7 @@ export default function ProfilePage() {
         if (response.ok) {
           const data = await response.json();
           setProfile(data.user);
+          setSelectedCharacter(data.user.character)
           setHistory(data.history);
         } else {
           const errorData = await response.json();
@@ -71,6 +87,48 @@ export default function ProfilePage() {
 
     fetchProfile();
   }, [router, toast]);
+
+  const handleCharacterSelect = (character: string) => {
+    setSelectedCharacter(character);
+  };
+
+  const handleCharacterSave = async () => {
+    const token = localStorage.getItem('token');
+    if (!token || !selectedCharacter) return;
+
+    try {
+      const response = await fetch('/api/user/character', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ character: selectedCharacter })
+      });
+
+      if(response.ok) {
+        const updatedUser = await response.json();
+        setProfile(prev => prev ? { ...prev, character: updatedUser.character } : null);
+        toast({ title: "Sukses", description: "Karakter berhasil diperbarui!" });
+        setIsCharacterModalOpen(false);
+
+        const localUser = localStorage.getItem('user');
+        if (localUser) {
+            const parsedUser = JSON.parse(localUser);
+            parsedUser.character = updatedUser.character;
+            localStorage.setItem('user', JSON.stringify(parsedUser));
+            window.dispatchEvent(new Event('storage'));
+        }
+
+      } else {
+        const errorData = await response.json();
+        toast({ title: "Gagal", description: errorData.error || "Tidak dapat memperbarui karakter.", variant: 'destructive' });
+      }
+    } catch (error) {
+       toast({ title: "Error", description: "Tidak dapat terhubung ke server.", variant: 'destructive' });
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -145,12 +203,34 @@ export default function ProfilePage() {
              <Card>
                <CardHeader className="items-center text-center">
                  <Avatar className="h-24 w-24 mb-4">
-                   <AvatarImage src={`https://api.dicebear.com/8.x/pixel-art/svg?seed=${profile.username}`} alt={profile.username} />
+                   <AvatarImage src={profile.character} alt={profile.username} />
                    <AvatarFallback>{profile.username.substring(0, 2).toUpperCase()}</AvatarFallback>
                  </Avatar>
                  <CardTitle>{profile.username}</CardTitle>
                  <CardDescription>{profile.email}</CardDescription>
                  <Badge variant="secondary" className="mt-2">Bergabung: {new Date(profile.created_at).toLocaleDateString()}</Badge>
+                  <Dialog open={isCharacterModalOpen} onOpenChange={setIsCharacterModalOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" className="mt-4">Ubah Karakter</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Pilih Karakter</DialogTitle>
+                      </DialogHeader>
+                      <div className="grid grid-cols-3 gap-4 py-4">
+                        {characters.map(char => (
+                          <div
+                            key={char}
+                            className={`p-2 rounded-md cursor-pointer transition-all ${selectedCharacter === char ? 'ring-2 ring-primary' : 'hover:bg-accent'}`}
+                            onClick={() => handleCharacterSelect(char)}
+                          >
+                            <img src={char} alt="player character" className="w-full h-auto" />
+                          </div>
+                        ))}
+                      </div>
+                      <Button onClick={handleCharacterSave} disabled={!selectedCharacter}>Simpan</Button>
+                    </DialogContent>
+                  </Dialog>
                </CardHeader>
              </Card>
           </div>

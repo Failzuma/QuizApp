@@ -1,5 +1,5 @@
 
-'use client'; // For useState, useEffect, useRouter
+'use client'; 
 
 import * as React from 'react';
 import Link from 'next/link';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Menu, MapPin, UserCircle, LogOut, ShieldCheck, LayoutDashboard, LogIn, UserPlus } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 
 const PixelMapIcon = () => (
   <MapPin className="h-6 w-6 text-primary" />
@@ -17,6 +18,7 @@ interface User {
     user_id: number;
     username: string;
     email: string;
+    character: string;
 }
 
 export function Header() {
@@ -27,7 +29,6 @@ export function Header() {
 
   React.useEffect(() => {
     const updateAuthState = () => {
-      // The single source of truth is the presence of the token.
       const token = localStorage.getItem('token');
       const userData = localStorage.getItem('user');
 
@@ -37,7 +38,7 @@ export function Header() {
             setUser(JSON.parse(userData));
         } catch(e) {
             console.error("Failed to parse user data from localStorage", e);
-            handleLogout(); // Log out if user data is corrupted
+            handleLogout(); 
         }
       } else {
         setIsLoggedIn(false);
@@ -52,12 +53,12 @@ export function Header() {
     return () => {
       window.removeEventListener('storage', updateAuthState);
     };
-  }, []); // Empty dependency array means this effect runs once on mount and cleans up on unmount.
+  }, []); 
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    window.dispatchEvent(new Event('storage')); // Notify all components of auth change
+    window.dispatchEvent(new Event('storage')); 
     toast({ title: "Logout Berhasil", description: "Anda telah berhasil keluar." });
     router.push('/login');
   };
@@ -150,10 +151,14 @@ export function Header() {
             </Sheet>
         </div>
 
-        <div className="hidden md:flex items-center gap-2">
-            {isLoggedIn ? (
+        <div className="hidden md:flex items-center gap-3">
+            {isLoggedIn && user ? (
                 <>
-                  <span className="text-sm font-medium text-muted-foreground">Welcome, {user?.username || 'User'}!</span>
+                  <span className="text-sm font-medium text-muted-foreground">Welcome, {user.username}!</span>
+                  <Avatar className='h-8 w-8'>
+                    <AvatarImage src={user.character} alt={user.username} />
+                    <AvatarFallback>{user.username.substring(0,1).toUpperCase()}</AvatarFallback>
+                  </Avatar>
                   <Button variant="outline" onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" /> Logout
                   </Button>
