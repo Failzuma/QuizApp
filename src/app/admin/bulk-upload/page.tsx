@@ -7,15 +7,19 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Terminal } from 'lucide-react';
 
 export default function BulkUploadQuestions() {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const { toast } = useToast();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
       setFile(event.target.files[0]);
+      setErrorDetails(null); // Reset errors on new file selection
     }
   };
 
@@ -31,6 +35,8 @@ export default function BulkUploadQuestions() {
     }
 
     setIsUploading(true);
+    setErrorDetails(null);
+    
     const reader = new FileReader();
     reader.readAsText(file, 'UTF-8');
     reader.onload = async (evt) => {
@@ -41,7 +47,6 @@ export default function BulkUploadQuestions() {
             }
             const data = JSON.parse(jsonContent);
 
-            // Here you would typically get the token from your auth context
             const token = localStorage.getItem('token'); 
 
             const response = await fetch('/api/questions', {
@@ -56,19 +61,41 @@ export default function BulkUploadQuestions() {
             const result = await response.json();
 
             if (!response.ok) {
-                throw new Error(result.error || 'Something went wrong');
+                // Construct a detailed error message
+                let errorMessage = result.error || 'An unknown error occurred.';
+                if (result.details) {
+                    // Flatten Zod error details into a readable string
+                    const fieldErrors = result.details.fieldErrors;
+                    const formErrors = result.details.formErrors;
+                    let detailedMessages = formErrors.length > 0 ? `Form Errors: ${formErrors.join(', ')}` : '';
+                    if(fieldErrors) {
+                       detailedMessages += Object.entries(fieldErrors).map(([key, value]) => `
+- Field '${key}': ${value}`).join('');
+                    }
+                    errorMessage += `
+
+Details:
+${detailedMessages}`;
+                }
+                 setErrorDetails(errorMessage);
+                throw new Error("Validation failed");
             }
 
             toast({
-                title: 'Upload Successful',
-                description: result.message || 'Questions have been added to the bank.',
+                title: 'Upload Successful!',
+                description: result.message || `${result.questions?.length || ''} questions have been added.`,
             });
-            setFile(null); // Reset file input
+            setFile(null);
+            // Clear file input visually
+            const fileInput = document.getElementById('json-file') as HTMLInputElement;
+            if(fileInput) fileInput.value = '';
+
         } catch (error: any) {
             console.error(error);
+            // The toast will now show a more generic message, as details are in the alert
             toast({
                 title: 'Upload Failed',
-                description: error.message || 'Please check the file format and try again.',
+                description: 'Please check the details below and correct your file.',
                 variant: 'destructive',
             });
         } finally {
@@ -76,9 +103,11 @@ export default function BulkUploadQuestions() {
         }
     };
     reader.onerror = () => {
+        const errorMsg = 'Could not read the selected file. It might be corrupted or in use.';
+        setErrorDetails(errorMsg);
         toast({
             title: 'File Read Error',
-            description: 'Could not read the selected file.',
+            description: errorMsg,
             variant: 'destructive',
         });
         setIsUploading(false);
@@ -87,7 +116,7 @@ export default function BulkUploadQuestions() {
 
   return (
     <div className="container mx-auto p-4">
-      <Card className="max-w-lg mx-auto">
+      <Card className="max-w-xl mx-auto">
         <CardHeader>
           <CardTitle>Bulk Upload Questions</CardTitle>
           <CardDescription>
@@ -98,8 +127,17 @@ export default function BulkUploadQuestions() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid w-full max-w-sm items-center gap-1.5">
                 <Label htmlFor="json-file">JSON File</Label>
-                <Input id="json-file" type="file" accept=".json" onChange={handleFileChange} />
+                <Input id="json-file" type="file" accept=".json,.txt" onChange={handleFileChange} />
             </div>
+            {errorDetails && (
+                 <Alert variant="destructive">
+                    <Terminal className="h-4 w-4" />
+                    <AlertTitle>Validation Error</AlertTitle>
+                    <AlertDescription className="whitespace-pre-wrap font-mono text-xs">
+                        {errorDetails}
+                    </AlertDescription>
+                </Alert>
+            )}
             <Button type="submit" disabled={!file || isUploading}>
               {isUploading ? 'Uploading...' : 'Upload Questions'}
             </Button>
