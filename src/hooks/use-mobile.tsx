@@ -3,33 +3,28 @@ import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768
 
-export function useIsMobile() {
-  // Initialize state to undefined to clearly indicate it hasn't been determined yet (SSR)
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+// Renamed to useMobile to match the import statement in the game page.
+export function useMobile() {
+  // Initialize state to a default (false), and only update on the client.
+  const [isMobile, setIsMobile] = React.useState<boolean>(false)
 
   React.useEffect(() => {
-    // Check if window is defined (runs only on client-side)
-    if (typeof window === 'undefined') {
-      return; // Do nothing on the server
-    }
-
-    // Function to update the state based on window width
+    // This effect runs only on the client-side after the component has mounted.
     const checkDevice = () => {
       setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
     };
 
-    // Initial check when the component mounts on the client
+    // Initial check
     checkDevice();
 
     // Add resize event listener
     window.addEventListener('resize', checkDevice);
 
-    // Cleanup function to remove the listener when the component unmounts
+    // Cleanup function
     return () => {
       window.removeEventListener('resize', checkDevice);
     };
-  }, []); // Empty dependency array ensures this runs only once on mount (client-side)
+  }, []); // Empty dependency array ensures this runs only once on the client.
 
-  // Return the state (will be undefined during SSR, boolean on client after mount)
   return isMobile;
 }
