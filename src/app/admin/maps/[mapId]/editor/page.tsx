@@ -2,7 +2,6 @@
 'use client';
 
 import * as React from 'react';
-import Draggable from 'react-draggable';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // --- Types ---
 interface BaseProperties {
-    id: number;
+    id: number | string; // Allow string for draft IDs
     posX: number;
     posY: number;
 }
@@ -24,7 +23,6 @@ interface Obstacle extends BaseProperties {
     width: number;
     height: number;
 }
-type Draft<T> = Omit<T, 'id'> & { draftId: string };
 
 export default function MapEditorPage({ params }: { params: { mapId: string } }) {
     const { mapId } = params;
@@ -37,9 +35,10 @@ export default function MapEditorPage({ params }: { params: { mapId: string } })
     const [isSaving, setIsSaving] = React.useState(false);
     const [imageDimensions, setImageDimensions] = React.useState({ width: 1280, height: 720 });
     
-    // Drawing state for obstacles
-    const [isDrawing, setIsDrawing] = React.useState(false);
+    // Interaction state
+    const [interactionMode, setInteractionMode] = React.useState<'idle' | 'drawing' | 'dragging'>('idle');
     const [startPos, setStartPos] = React.useState({ x: 0, y: 0 });
+    const [draggedNode, setDraggedNode] = React.useState<Node | null>(null);
     const [currentRect, setCurrentRect] = React.useState<Obstacle | null>(null);
 
     const mapContainerRef = React.useRef<HTMLDivElement>(null);
@@ -58,8 +57,8 @@ export default function MapEditorPage({ params }: { params: { mapId: string } })
                 if (!obstaclesRes.ok) throw new Error('Failed to fetch obstacles.');
                 const nodesData = await nodesRes.json();
                 const obstaclesData = await obstaclesRes.json();
-                setNodes(nodesData.map((n:any) => ({...n, id: n.node_id})));
-                setObstacles(obstaclesData.map((o:any) => ({...o, id: o.obstacle_id})));
+                setNodes(nodesData.map((n: any) => ({ ...n, id: n.node_id })));
+                setObstacles(obstaclesData.map((o: any) => ({ ...o, id: o.obstacle_id })));
             } catch (error) {
                 toast({ title: 'Error', description: (error as Error).message, variant: 'destructive' });
             } finally {
@@ -68,7 +67,7 @@ export default function MapEditorPage({ params }: { params: { mapId: string } })
         };
         fetchData();
     }, [mapId, toast]);
-
+    
     // --- Utility Functions ---
     const getScaledCoords = (e: MouseEvent | React.MouseEvent) => {
         if (!mapContainerRef.current) return { x: 0, y: 0 };
@@ -81,56 +80,56 @@ export default function MapEditorPage({ params }: { params: { mapId: string } })
         };
     };
 
-    // --- Node Handlers ---
-    const handleNodeClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        e.stopPropagation(); // Prevent map click when clicking a node
-        const { x, y } = getScaledCoords(e);
-        const newNode: Node = { id: Date.now(), posX: x, posY: y, title: 'New Node' };
-        setNodes(prev => [...prev, newNode]);
-    };
-
-    const handleNodeDragStop = (e: MouseEvent, data: { x: number, y: number }, nodeId: number) => {
-        const { x: newPosX, y: newPosY } = getScaledCoords({ clientX: data.x, clientY: data.y } as MouseEvent);
-         setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, posX: newPosX, posY: newPosY } : n));
-    };
-    
-    // --- Obstacle Handlers ---
-    const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (e.button !== 0) return; // Only left click
-        e.stopPropagation();
-        setIsDrawing(true);
+    // --- Event Handlers ---
+    const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>, activeTab: 'nodes' | 'obstacles') => {
+        if (e.button !== 0) return;
+        setInteractionMode(activeTab === 'obstacles' ? 'drawing' : 'idle');
         const pos = getScaledCoords(e);
         setStartPos(pos);
-        setCurrentRect({ id: Date.now(), posX: pos.x, posY: pos.y, width: 0, height: 0 });
+        if (activeTab === 'obstacles') {
+             setCurrentRect({ id: `draft-${Date.now()}`, posX: pos.x, posY: pos.y, width: 0, height: 0 });
+        }
     };
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!isDrawing || !currentRect) return;
-        e.stopPropagation();
-        const pos = getScaledCoords(e);
-        const width = Math.abs(pos.x - startPos.x);
-        const height = Math.abs(pos.y - startPos.y);
-        const newPosX = Math.min(pos.x, startPos.x);
-        const newPosY = Math.min(pos.y, startPos.y);
-        setCurrentRect({ ...currentRect, posX: newPosX, posY: newPosY, width, height });
-    };
+        if (interactionMode === 'idle') return;
 
-    const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!isDrawing || !currentRect) return;
-        e.stopPropagation();
-        setIsDrawing(false);
-        if (currentRect.width > 10 && currentRect.height > 10) {
-            setObstacles(prev => [...prev, currentRect]);
-            toast({ title: "Obstacle Added", description: "Click save to commit." });
+        if (interactionMode === 'dragging' && draggedNode) {
+            const pos = getScaledCoords(e);
+            setNodes(prev => prev.map(n => n.id === draggedNode.id ? { ...n, posX: pos.x, posY: pos.y } : n));
         }
-        setCurrentRect(null);
+        if (interactionMode === 'drawing' && currentRect) {
+            const pos = getScaledCoords(e);
+            const width = Math.abs(pos.x - startPos.x);
+            const height = Math.abs(pos.y - startPos.y);
+            const newPosX = Math.min(pos.x, startPos.x);
+            const newPosY = Math.min(pos.y, startPos.y);
+            setCurrentRect({ ...currentRect, posX: newPosX, posY: newPosY, width, height });
+        }
+    };
+    
+    const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+        // Create obstacle if drawing
+        if (interactionMode === 'drawing' && currentRect) {
+            if (currentRect.width > 5 && currentRect.height > 5) {
+                setObstacles(prev => [...prev, currentRect]);
+                toast({ title: "Obstacle Added", description: "Click save to commit." });
+            }
+            setCurrentRect(null);
+        }
+        // Reset interaction state
+        setInteractionMode('idle');
+        setDraggedNode(null);
     };
 
-    // --- Generic Handlers ---
-     const handleDelete = (id: number, type: 'node' | 'obstacle') => {
-        if (type === 'node') setNodes(prev => prev.filter(n => n.id !== id));
-        else setObstacles(prev => prev.filter(o => o.id !== id));
-        toast({ title: `${type.charAt(0).toUpperCase() + type.slice(1)} Removed`, description: "Local change. Click save." });
+    const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        // Prevent creating node if mouse was dragged (for drawing)
+        const distance = Math.sqrt(Math.pow(e.clientX - startPos.x, 2) + Math.pow(e.clientY - startPos.y, 2));
+        if (distance > 5) return;
+
+        const { x, y } = getScaledCoords(e);
+        const newNode: Node = { id: `draft-${Date.now()}`, posX: x, posY: y, title: 'New Node' };
+        setNodes(prev => [...prev, newNode]);
     };
 
     const handleSaveChanges = async () => {
@@ -168,7 +167,8 @@ export default function MapEditorPage({ params }: { params: { mapId: string } })
             setIsSaving(false);
         }
     };
-
+    
+    // --- Render ---
     return (
         <div className="flex flex-col min-h-screen">
             <Header />
@@ -184,60 +184,56 @@ export default function MapEditorPage({ params }: { params: { mapId: string } })
                     </Button>
                 </div>
 
-                <Tabs defaultValue="nodes">
+                <Tabs defaultValue="nodes" className="w-full">
                     <TabsList>
                         <TabsTrigger value="nodes">Edit Nodes</TabsTrigger>
                         <TabsTrigger value="obstacles">Edit Obstacles</TabsTrigger>
                     </TabsList>
                     
-                    {/* --- Nodes Tab --- */}
                     <TabsContent value="nodes">
-                         <MapContainer
+                        <EditorCanvas
                             imageDimensions={imageDimensions}
                             backgroundUrl={backgroundUrl}
                             setImageDimensions={setImageDimensions}
                             mapContainerRef={mapContainerRef}
-                            onMapClick={handleNodeClick}
-                         >
-                            {nodes.map(node => (
-                                <Draggable
-                                    key={node.id}
-                                    position={{ x: (node.posX / imageDimensions.width) * (mapContainerRef.current?.clientWidth || 0), y: (node.posY / imageDimensions.height) * (mapContainerRef.current?.clientHeight || 0) }}
-                                    onStop={(e, data) => handleNodeDragStop(e as MouseEvent, data, node.id)}
-                                >
-                                    <div className="absolute cursor-grab active:cursor-grabbing">
-                                        <MapPin className="text-blue-500 w-8 h-8 drop-shadow-lg" />
-                                    </div>
-                                </Draggable>
-                            ))}
-                         </MapContainer>
-                    </TabsContent>
-                    
-                    {/* --- Obstacles Tab --- */}
-                    <TabsContent value="obstacles">
-                        <MapContainer
-                            imageDimensions={imageDimensions}
-                            backgroundUrl={backgroundUrl}
-                            setImageDimensions={setImageDimensions}
-                            mapContainerRef={mapContainerRef}
-                            className="cursor-crosshair"
-                            onMouseDown={handleMouseDown}
+                            onMouseDown={(e) => handleMouseDown(e, 'nodes')}
                             onMouseMove={handleMouseMove}
                             onMouseUp={handleMouseUp}
+                            onMapClick={handleMapClick}
+                            isLoading={isLoading}
+                        >
+                            {nodes.map(node => (
+                                <div key={node.id} 
+                                    className="absolute transform -translate-x-1/2 -translate-y-1/2"
+                                    style={{ left: node.posX, top: node.posY, transform: `scale(${1280 / imageDimensions.width})` }}
+                                    onMouseDown={(e) => { e.stopPropagation(); setInteractionMode('dragging'); setDraggedNode(node); }}
+                                >
+                                    <MapPin className="text-blue-500 w-8 h-8 drop-shadow-lg cursor-grab active:cursor-grabbing"/>
+                                </div>
+                            ))}
+                        </EditorCanvas>
+                    </TabsContent>
+                    
+                    <TabsContent value="obstacles">
+                       <EditorCanvas
+                            imageDimensions={imageDimensions}
+                            backgroundUrl={backgroundUrl}
+                            setImageDimensions={setImageDimensions}
+                            mapContainerRef={mapContainerRef}
+                            onMouseDown={(e) => handleMouseDown(e, 'obstacles')}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            isLoading={isLoading}
+                            className="cursor-crosshair"
                         >
                             {obstacles.map(o => (
                                  <div key={o.id}
                                     className="absolute bg-red-500/50 border-2 border-red-700"
-                                    style={{
-                                        left: `${(o.posX / imageDimensions.width) * 100}%`,
-                                        top: `${(o.posY / imageDimensions.height) * 100}%`,
-                                        width: `${(o.width / imageDimensions.width) * 100}%`,
-                                        height: `${(o.height / imageDimensions.height) * 100}%`,
-                                    }}
+                                    style={{ left: o.posX, top: o.posY, width: o.width, height: o.height }}
                                  />
                             ))}
-                            {currentRect && <div className="absolute bg-yellow-500/50 border-2 border-yellow-700" style={{left: `${(currentRect.posX / imageDimensions.width) * 100}%`, top: `${(currentRect.posY / imageDimensions.height) * 100}%`, width: `${(currentRect.width / imageDimensions.width) * 100}%`, height: `${(currentRect.height / imageDimensions.height) * 100}%`}}/>}
-                        </MapContainer>
+                            {currentRect && <div className="absolute bg-yellow-500/50 border-2 border-yellow-700" style={{ left: currentRect.posX, top: currentRect.posY, width: currentRect.width, height: currentRect.height }}/>}
+                        </EditorCanvas>
                     </TabsContent>
                 </Tabs>
             </main>
@@ -246,31 +242,34 @@ export default function MapEditorPage({ params }: { params: { mapId: string } })
     );
 }
 
-// Reusable Map Container Component
-function MapContainer({ children, imageDimensions, backgroundUrl, setImageDimensions, mapContainerRef, className, ...props }: any) {
+function EditorCanvas({ children, imageDimensions, backgroundUrl, setImageDimensions, mapContainerRef, className, isLoading, ...props }: any) {
     return (
         <Card>
             <CardHeader>
                 <CardTitle>Interactive Map</CardTitle>
-                <CardDescription>
-                    {props.onMapClick ? "Click to add a new node. Drag to move." : "Click and drag to draw an obstacle."}
-                </CardDescription>
             </CardHeader>
             <CardContent>
                 <div
                     ref={mapContainerRef}
                     className={`relative w-full bg-muted border rounded-md overflow-hidden ${className}`}
-                    style={{ aspectRatio: `${imageDimensions.width} / ${imageDimensions.height}` }}
+                    style={{ 
+                        width: '100%',
+                        height: 'auto',
+                        aspectRatio: `${imageDimensions.width} / ${imageDimensions.height}` 
+                    }}
                     {...props}
                 >
                     <img
                         src={backgroundUrl}
                         alt="Map Background"
-                        className="w-full h-full object-cover"
+                        className="absolute top-0 left-0 w-full h-full object-cover select-none"
                         onLoad={(e) => setImageDimensions({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}
-                        onError={(e) => e.currentTarget.style.display = 'none'}
+                        draggable={false}
                     />
-                    {children}
+                    <div className="absolute top-0 left-0 w-full h-full" style={{ transform: `scale(${mapContainerRef.current?.clientWidth / imageDimensions.width})`, transformOrigin: 'top left' }}>
+                        {children}
+                    </div>
+                     {isLoading && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-white"/></div>}
                 </div>
             </CardContent>
         </Card>
