@@ -2,53 +2,64 @@
 'use client';
 
 import * as React from 'react';
+import Draggable from 'react-draggable';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Save, MousePointerClick, Trash2, MapPin } from 'lucide-react';
+import { Loader2, Save, MousePointerClick, Trash2, MapPin, RectangleHorizontal } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-// Types
-interface Node {
-    node_id: number;
+// --- Types ---
+interface BaseProperties {
+    id: number;
     posX: number;
     posY: number;
+}
+interface Node extends BaseProperties {
     title?: string | null;
 }
-
-// Represents a node that is yet to be saved to the DB.
-// The ID is temporary for keying purposes.
-type DraftNode = Omit<Node, 'node_id'> & { id: string };
+interface Obstacle extends BaseProperties {
+    width: number;
+    height: number;
+}
+type Draft<T> = Omit<T, 'id'> & { draftId: string };
 
 export default function MapEditorPage({ params }: { params: { mapId: string } }) {
     const { mapId } = params;
     const { toast } = useToast();
-    
-    // Server state
-    const [initialNodes, setInitialNodes] = React.useState<Node[]>([]);
-    
-    // Draft state for local changes
-    const [draftNodes, setDraftNodes] = React.useState<Array<Node | DraftNode>>([]);
-    
+
+    // --- State ---
+    const [nodes, setNodes] = React.useState<Node[]>([]);
+    const [obstacles, setObstacles] = React.useState<Obstacle[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
     const [isSaving, setIsSaving] = React.useState(false);
     const [imageDimensions, setImageDimensions] = React.useState({ width: 1280, height: 720 });
-    const mapContainerRef = React.useRef<HTMLDivElement>(null);
+    
+    // Drawing state for obstacles
+    const [isDrawing, setIsDrawing] = React.useState(false);
+    const [startPos, setStartPos] = React.useState({ x: 0, y: 0 });
+    const [currentRect, setCurrentRect] = React.useState<Obstacle | null>(null);
 
+    const mapContainerRef = React.useRef<HTMLDivElement>(null);
     const backgroundUrl = `/assets/images/backgrounds/${mapId}_background.png`;
 
-    // Fetch initial data
+    // --- Data Fetching ---
     React.useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                const response = await fetch(`/api/maps/${mapId}/nodes`);
-                if (!response.ok) throw new Error('Failed to fetch map data.');
-                const data: Node[] = await response.json();
-                setInitialNodes(data);
-                setDraftNodes(data);
+                const [nodesRes, obstaclesRes] = await Promise.all([
+                    fetch(`/api/maps/${mapId}/nodes`),
+                    fetch(`/api/maps/${mapId}/obstacles`)
+                ]);
+                if (!nodesRes.ok) throw new Error('Failed to fetch nodes.');
+                if (!obstaclesRes.ok) throw new Error('Failed to fetch obstacles.');
+                const nodesData = await nodesRes.json();
+                const obstaclesData = await obstaclesRes.json();
+                setNodes(nodesData.map((n:any) => ({...n, id: n.node_id})));
+                setObstacles(obstaclesData.map((o:any) => ({...o, id: o.obstacle_id})));
             } catch (error) {
                 toast({ title: 'Error', description: (error as Error).message, variant: 'destructive' });
             } finally {
@@ -58,60 +69,98 @@ export default function MapEditorPage({ params }: { params: { mapId: string } })
         fetchData();
     }, [mapId, toast]);
 
-    const handleMapClick = (event: React.MouseEvent<HTMLDivElement>) => {
-        if (!mapContainerRef.current) return;
-
+    // --- Utility Functions ---
+    const getScaledCoords = (e: MouseEvent | React.MouseEvent) => {
+        if (!mapContainerRef.current) return { x: 0, y: 0 };
         const rect = mapContainerRef.current.getBoundingClientRect();
         const scaleX = imageDimensions.width / rect.width;
         const scaleY = imageDimensions.height / rect.height;
-
-        const posX = Math.round((event.clientX - rect.left) * scaleX);
-        const posY = Math.round((event.clientY - rect.top) * scaleY);
-        
-        const newNode: DraftNode = {
-            id: `draft-${Date.now()}`,
-            posX,
-            posY,
-            title: `New Node`
+        return {
+            x: Math.round((e.clientX - rect.left) * scaleX),
+            y: Math.round((e.clientY - rect.top) * scaleY),
         };
+    };
 
-        setDraftNodes(prev => [...prev, newNode]);
-        toast({ title: "Node Added", description: "Click 'Save Changes' to commit." });
+    // --- Node Handlers ---
+    const handleNodeClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.stopPropagation(); // Prevent map click when clicking a node
+        const { x, y } = getScaledCoords(e);
+        const newNode: Node = { id: Date.now(), posX: x, posY: y, title: 'New Node' };
+        setNodes(prev => [...prev, newNode]);
+    };
+
+    const handleNodeDragStop = (e: MouseEvent, data: { x: number, y: number }, nodeId: number) => {
+        const { x: newPosX, y: newPosY } = getScaledCoords({ clientX: data.x, clientY: data.y } as MouseEvent);
+         setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, posX: newPosX, posY: newPosY } : n));
     };
     
-    const handleDeleteNode = (id: number | string) => {
-        setDraftNodes(prev => prev.filter(n => 'node_id' in n ? n.node_id !== id : n.id !== id));
-        toast({ title: "Node Removed", description: "This change is local. Click 'Save Changes'." });
-    }
+    // --- Obstacle Handlers ---
+    const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (e.button !== 0) return; // Only left click
+        e.stopPropagation();
+        setIsDrawing(true);
+        const pos = getScaledCoords(e);
+        setStartPos(pos);
+        setCurrentRect({ id: Date.now(), posX: pos.x, posY: pos.y, width: 0, height: 0 });
+    };
+
+    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!isDrawing || !currentRect) return;
+        e.stopPropagation();
+        const pos = getScaledCoords(e);
+        const width = Math.abs(pos.x - startPos.x);
+        const height = Math.abs(pos.y - startPos.y);
+        const newPosX = Math.min(pos.x, startPos.x);
+        const newPosY = Math.min(pos.y, startPos.y);
+        setCurrentRect({ ...currentRect, posX: newPosX, posY: newPosY, width, height });
+    };
+
+    const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!isDrawing || !currentRect) return;
+        e.stopPropagation();
+        setIsDrawing(false);
+        if (currentRect.width > 10 && currentRect.height > 10) {
+            setObstacles(prev => [...prev, currentRect]);
+            toast({ title: "Obstacle Added", description: "Click save to commit." });
+        }
+        setCurrentRect(null);
+    };
+
+    // --- Generic Handlers ---
+     const handleDelete = (id: number, type: 'node' | 'obstacle') => {
+        if (type === 'node') setNodes(prev => prev.filter(n => n.id !== id));
+        else setObstacles(prev => prev.filter(o => o.id !== id));
+        toast({ title: `${type.charAt(0).toUpperCase() + type.slice(1)} Removed`, description: "Local change. Click save." });
+    };
 
     const handleSaveChanges = async () => {
         setIsSaving(true);
-        const token = localStorage.getItem('token');
         try {
-            // Here we would create/update/delete nodes.
-            // For simplicity in this step, we'll just implement a bulk update/create.
-            // A more robust solution would track new, updated, and deleted nodes separately.
+            const nodesPayload = nodes.map(({ id, ...rest }) => ({ ...rest, node_id: typeof id === 'number' ? id : undefined }));
+            const obstaclesPayload = obstacles.map(({ id, ...rest }) => ({ ...rest, obstacle_id: typeof id === 'number' ? id : undefined }));
+
+            const [nodesRes, obstaclesRes] = await Promise.all([
+                fetch(`/api/maps/${mapId}/nodes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    body: JSON.stringify(nodesPayload)
+                }),
+                fetch(`/api/maps/${mapId}/obstacles`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    body: JSON.stringify(obstaclesPayload)
+                })
+            ]);
             
-            const payload = draftNodes.map(n => ({
-                // If it has node_id, it's an existing node. Otherwise, it's new.
-                node_id: 'node_id' in n ? n.node_id : undefined,
-                posX: n.posX,
-                posY: n.posY,
-                title: n.title,
-            }));
+            const nodesResult = await nodesRes.json();
+            const obstaclesResult = await obstaclesRes.json();
 
-            const response = await fetch(`/api/maps/${mapId}/nodes`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify(payload)
-            });
+            if (!nodesRes.ok) throw new Error(nodesResult.error || 'Failed to save nodes.');
+            if (!obstaclesRes.ok) throw new Error(obstaclesResult.error || 'Failed to save obstacles.');
 
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || 'Failed to save changes.');
-
-            toast({ title: "Success!", description: "Map nodes have been saved." });
-            setDraftNodes(result.nodes); // Update state with data from server (including new IDs)
-            setInitialNodes(result.nodes);
+            toast({ title: "Success!", description: "All changes have been saved." });
+            setNodes(nodesResult.nodes.map((n:any) => ({...n, id: n.node_id})));
+            setObstacles(obstaclesResult.obstacles.map((o:any) => ({...o, id: o.obstacle_id})));
 
         } catch (error) {
             toast({ title: 'Save Failed', description: (error as Error).message, variant: 'destructive' });
@@ -119,100 +168,111 @@ export default function MapEditorPage({ params }: { params: { mapId: string } })
             setIsSaving(false);
         }
     };
-    
+
     return (
         <div className="flex flex-col min-h-screen">
             <Header />
             <main className="flex-grow container mx-auto px-4 py-8">
-                <div className="flex justify-between items-center mb-4">
+                 <div className="flex justify-between items-center mb-4">
                     <div>
                         <h1 className="text-3xl font-bold">Visual Map Editor</h1>
                         <p className="text-muted-foreground">Editing map: <span className="font-mono text-primary">{mapId}</span></p>
                     </div>
                     <Button onClick={handleSaveChanges} disabled={isSaving || isLoading}>
                         {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />}
-                        Save Changes
+                        Save All Changes
                     </Button>
                 </div>
 
                 <Tabs defaultValue="nodes">
                     <TabsList>
                         <TabsTrigger value="nodes">Edit Nodes</TabsTrigger>
-                        <TabsTrigger value="obstacles" disabled>Edit Obstacles (Coming Soon)</TabsTrigger>
+                        <TabsTrigger value="obstacles">Edit Obstacles</TabsTrigger>
                     </TabsList>
+                    
+                    {/* --- Nodes Tab --- */}
                     <TabsContent value="nodes">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4">
-                            <div className="lg:col-span-2">
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Interactive Map</CardTitle>
-                                        <CardDescription>Click on the map to add a new node. Drag-and-drop functionality coming soon.</CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div
-                                            ref={mapContainerRef}
-                                            className="relative w-full bg-muted border rounded-md overflow-hidden cursor-crosshair"
-                                            style={{ aspectRatio: `${imageDimensions.width} / ${imageDimensions.height}` }}
-                                            onClick={handleMapClick}
-                                        >
-                                            <img
-                                                src={backgroundUrl}
-                                                alt="Map Background"
-                                                className="w-full h-full object-cover"
-                                                onLoad={(e) => {
-                                                    const img = e.currentTarget;
-                                                    setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-                                                }}
-                                                onError={(e) => e.currentTarget.style.display = 'none'}
-                                            />
-                                            {draftNodes.map(node => (
-                                                <div
-                                                    key={'node_id' in node ? node.node_id : node.id}
-                                                    className="absolute flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
-                                                    style={{
-                                                        left: `${(node.posX / imageDimensions.width) * 100}%`,
-                                                        top: `${(node.posY / imageDimensions.height) * 100}%`,
-                                                    }}
-                                                    onClick={(e) => e.stopPropagation()} // Prevent creating new node when clicking existing one
-                                                    title={`Node (${node.posX}, ${node.posY})`}
-                                                >
-                                                     <MapPin className="text-white w-4 h-4"/>
-                                                </div>
-                                            ))}
-                                             {isLoading && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-white"/></div>}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </div>
-                            <div className="lg:col-span-1">
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Manage Nodes</CardTitle>
-                                        <CardDescription>Review and remove nodes. Positional editing coming soon.</CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <ul className="space-y-2 max-h-[500px] overflow-y-auto">
-                                            {draftNodes.map(node => (
-                                                <li key={'node_id' in node ? node.node_id : node.id} className="flex items-center justify-between p-2 bg-muted rounded-md text-sm">
-                                                    <span>
-                                                        {'node_id' in node ? `Node ID: ${node.node_id}` : `New Node`}
-                                                        <span className="text-muted-foreground ml-2">({node.posX}, {node.posY})</span>
-                                                    </span>
-                                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteNode('node_id' in node ? node.node_id : node.id)}>
-                                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                                    </Button>
-                                                </li>
-                                            ))}
-                                            {draftNodes.length === 0 && <p className="text-center text-muted-foreground py-4">No nodes yet. Click on the map to add one.</p>}
-                                        </ul>
-                                    </CardContent>
-                                </Card>
-                            </div>
-                        </div>
+                         <MapContainer
+                            imageDimensions={imageDimensions}
+                            backgroundUrl={backgroundUrl}
+                            setImageDimensions={setImageDimensions}
+                            mapContainerRef={mapContainerRef}
+                            onMapClick={handleNodeClick}
+                         >
+                            {nodes.map(node => (
+                                <Draggable
+                                    key={node.id}
+                                    position={{ x: (node.posX / imageDimensions.width) * (mapContainerRef.current?.clientWidth || 0), y: (node.posY / imageDimensions.height) * (mapContainerRef.current?.clientHeight || 0) }}
+                                    onStop={(e, data) => handleNodeDragStop(e as MouseEvent, data, node.id)}
+                                >
+                                    <div className="absolute cursor-grab active:cursor-grabbing">
+                                        <MapPin className="text-blue-500 w-8 h-8 drop-shadow-lg" />
+                                    </div>
+                                </Draggable>
+                            ))}
+                         </MapContainer>
+                    </TabsContent>
+                    
+                    {/* --- Obstacles Tab --- */}
+                    <TabsContent value="obstacles">
+                        <MapContainer
+                            imageDimensions={imageDimensions}
+                            backgroundUrl={backgroundUrl}
+                            setImageDimensions={setImageDimensions}
+                            mapContainerRef={mapContainerRef}
+                            className="cursor-crosshair"
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                        >
+                            {obstacles.map(o => (
+                                 <div key={o.id}
+                                    className="absolute bg-red-500/50 border-2 border-red-700"
+                                    style={{
+                                        left: `${(o.posX / imageDimensions.width) * 100}%`,
+                                        top: `${(o.posY / imageDimensions.height) * 100}%`,
+                                        width: `${(o.width / imageDimensions.width) * 100}%`,
+                                        height: `${(o.height / imageDimensions.height) * 100}%`,
+                                    }}
+                                 />
+                            ))}
+                            {currentRect && <div className="absolute bg-yellow-500/50 border-2 border-yellow-700" style={{left: `${(currentRect.posX / imageDimensions.width) * 100}%`, top: `${(currentRect.posY / imageDimensions.height) * 100}%`, width: `${(currentRect.width / imageDimensions.width) * 100}%`, height: `${(currentRect.height / imageDimensions.height) * 100}%`}}/>}
+                        </MapContainer>
                     </TabsContent>
                 </Tabs>
             </main>
             <Footer />
         </div>
+    );
+}
+
+// Reusable Map Container Component
+function MapContainer({ children, imageDimensions, backgroundUrl, setImageDimensions, mapContainerRef, className, ...props }: any) {
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Interactive Map</CardTitle>
+                <CardDescription>
+                    {props.onMapClick ? "Click to add a new node. Drag to move." : "Click and drag to draw an obstacle."}
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div
+                    ref={mapContainerRef}
+                    className={`relative w-full bg-muted border rounded-md overflow-hidden ${className}`}
+                    style={{ aspectRatio: `${imageDimensions.width} / ${imageDimensions.height}` }}
+                    {...props}
+                >
+                    <img
+                        src={backgroundUrl}
+                        alt="Map Background"
+                        className="w-full h-full object-cover"
+                        onLoad={(e) => setImageDimensions({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}
+                        onError={(e) => e.currentTarget.style.display = 'none'}
+                    />
+                    {children}
+                </div>
+            </CardContent>
+        </Card>
     );
 }
