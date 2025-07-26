@@ -1,26 +1,20 @@
 
 import * as Phaser from 'phaser';
-import type { JoystickManager, JoystickOutputData } from 'nipplejs'; // Import types for joystick data
 
-// Define the types for the interaction callback (sends numeric DB ID)
 export type NodeInteractionCallback = (nodeDbId: number) => void;
-// Define the type for the nodes count callback
 export type NodesCountCallback = (count: number) => void;
 
-
-// Define the type for initialization data passed from React
 export interface SceneInitData {
-  mapId: string;
+  quizId: string;
+  playerCharacterUrl: string;
 }
 
-// Define the structure for node data passed from React
 export interface NodeData {
-    nodeId: number; // Use numeric database ID
+    nodeId: number; 
     x: number | null;
     y: number | null;
 }
 
-// Define structure for obstacle data from API
 interface ObstacleData {
     posX: number;
     posY: number;
@@ -28,47 +22,61 @@ interface ObstacleData {
     height: number;
 }
 
+interface QuizData {
+    map: {
+        map_identifier: string;
+        title: string;
+    };
+    questions: {
+        node_id: number;
+        question: {
+            question_id: number;
+            question_text: string;
+        }
+    }[];
+}
 
 export default class MainScene extends Phaser.Scene {
   private player?: Phaser.Physics.Arcade.Sprite;
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasdKeys?: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key; }; // Added for WASD
+  private wasdKeys?: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key; };
   private nodes?: Phaser.Physics.Arcade.StaticGroup;
-  private obstacles?: Phaser.Physics.Arcade.StaticGroup; // Group for collision objects
-  private onNodeInteract!: NodeInteractionCallback; // Should be set in initScene
-  private onNodesCountUpdate!: NodesCountCallback; // Callback for node count
+  private obstacles?: Phaser.Physics.Arcade.StaticGroup;
+  private onNodeInteract!: NodeInteractionCallback; 
+  private onNodesCountUpdate!: NodesCountCallback;
+  
+  private quizId?: string;
   private mapId?: string;
-  private currentBackground?: Phaser.GameObjects.Image;
-  private playerSpeed = 200; // Player movement speed
-  private initialCameraZoomLevel = 1.5; // Initial zoom level
-  private minZoom = 0.5; // Minimum zoom level (will be recalculated based on background)
-  private maxZoom = 3; // Maximum zoom level
-  private zoomIncrement = 0.1; // How much to zoom per step (mouse wheel or button)
-  private playerScale = 2.0; // Make player larger
-  private playerInputEnabled = true; // Flag to control player movement input
-  private interactionOnCooldown = false; // Flag to manage node interaction cooldown
-  private cooldownTimerEvent?: Phaser.Time.TimerEvent; // Timer event for cooldown
-  private joystickDirection: { x: number; y: number } = { x: 0, y: 0 }; // Store joystick vector
-  private highlightedNodeId: number | null = null; // Track the currently highlighted node's DB ID
-  private nodeCreationData: NodeData[] = []; // Store node data received from React
+  private playerCharacterUrl?: string;
 
+  private currentBackground?: Phaser.GameObjects.Image;
+  private playerSpeed = 200;
+  private initialCameraZoomLevel = 1.5;
+  private minZoom = 0.5; 
+  private maxZoom = 3;
+  private zoomIncrement = 0.1;
+  private playerScale = 2.0;
+  private playerInputEnabled = true;
+  private interactionOnCooldown = false;
+  private cooldownTimerEvent?: Phaser.Time.TimerEvent;
+  private joystickDirection: { x: number; y: number } = { x: 0, y: 0 };
+  private highlightedNodeId: number | null = null;
+  private nodeCreationData: NodeData[] = [];
 
   constructor() {
     super({ key: 'MainScene' });
   }
 
-  // Updated method to receive initialization data, callbacks, and node data
   initScene(
       data: SceneInitData,
       interactCallback: NodeInteractionCallback,
-      countCallback: NodesCountCallback,
-      nodesToCreate: NodeData[] // Receive node data here
+      countCallback: NodesCountCallback
    ) {
-    this.mapId = data.mapId;
+    this.quizId = data.quizId;
+    this.playerCharacterUrl = data.playerCharacterUrl || '/assets/images/player_placeholder_32.png';
     this.onNodeInteract = interactCallback;
-    this.onNodesCountUpdate = countCallback; // Store the count callback
-    this.nodeCreationData = nodesToCreate; // Store node data for use in create()
-    console.log(`[Phaser Scene] MainScene initialized for map: ${this.mapId} with ${nodesToCreate.length} nodes to create.`);
+    this.onNodesCountUpdate = countCallback;
+    console.log(`[Phaser Scene] MainScene initialized for quiz: ${this.quizId}.`);
 
     if (!this.onNodeInteract) {
         console.error("[Phaser Scene] initScene called without a valid onNodeInteract callback!");
@@ -78,570 +86,371 @@ export default class MainScene extends Phaser.Scene {
         console.error("[Phaser Scene] initScene called without a valid onNodesCountUpdate callback!");
         this.onNodesCountUpdate = (count) => console.warn(`[Phaser Scene] Default onNodesCountUpdate called with count: ${count}`);
     }
-}
+  }
 
+  preload() {
+    console.log("[Phaser Scene] MainScene preload started.");
+    if (!this.quizId) {
+        console.error("[Phaser Scene] Cannot preload assets without quizId.");
+        return;
+    }
 
-  preloadAssets() {
-    console.log("[Phaser Scene] Preloading common assets...");
-    this.load.spritesheet('player', '/assets/images/player_placeholder_32.png', {
-      frameWidth: 32,
-      frameHeight: 32,
-      endFrame: 127,
-    });
+    // Load quiz data to get mapId and node locations
+    this.load.json(`quiz_data_${this.quizId}`, `/api/quizzes/${this.quizId}`);
+
+    // Load player character spritesheet
+    if (this.playerCharacterUrl) {
+      this.load.spritesheet('player', this.playerCharacterUrl, {
+        frameWidth: 32,
+        frameHeight: 32,
+        endFrame: 127
+      });
+    }
+
     this.load.spritesheet('node', '/assets/images/node_placeholder_16.png', {
       frameWidth: 16,
       frameHeight: 16,
       endFrame: 1,
     });
+  }
 
-    if (this.mapId) {
-        const backgroundAssetKey = `${this.mapId}_background`;
-        // The URL now includes the mapId as the filename
-        const backgroundUrl = `/assets/images/backgrounds/${this.mapId}_background.png`;
-        console.log(`[Phaser Scene] Attempting to preload background: ${backgroundAssetKey} from ${backgroundUrl}`);
-        this.load.image(backgroundAssetKey, backgroundUrl);
+  create() {
+    console.log("[Phaser Scene] MainScene create method started.");
+    
+    const quizData: QuizData = this.cache.json.get(`quiz_data_${this.quizId}`);
+    if (!quizData) {
+        console.error(`[Phaser Scene] Quiz data for ${this.quizId} not found! Aborting create.`);
+        return;
+    }
+    this.mapId = quizData.map.map_identifier;
+    this.nodeCreationData = quizData.questions.map(q => ({
+        nodeId: q.node_id,
+        // We will fetch the actual coordinates later
+        x: null, 
+        y: null
+    }));
 
-        this.load.once(`fileerror-image-${backgroundAssetKey}`, (file: Phaser.Loader.File) => {
-            console.error(`[Phaser Scene] Failed to load background image: ${file.key} from ${file.url}. Loading default.`);
-            if (!this.textures.exists('default_background')) {
-                this.load.image('default_background', '/assets/images/backgrounds/default_background.png');
-            }
-        });
+    // Now that we have mapId, load its assets
+    this.loadMapAssets();
+  }
 
-        // Preload obstacles data as a JSON file from our new API endpoint
-        this.load.json(`${this.mapId}_obstacles`, `/api/maps/${this.mapId}/obstacles`);
+  loadMapAssets() {
+      if (!this.mapId) return;
+      console.log(`[Phaser Scene] Loading assets for map: ${this.mapId}`);
+      
+      const backgroundAssetKey = `${this.mapId}_background`;
+      const backgroundUrl = `/assets/images/backgrounds/${this.mapId}_background.png`;
+      this.load.image(backgroundAssetKey, backgroundUrl);
 
+      this.load.json(`${this.mapId}_nodes`, `/api/maps/${this.mapId}/nodes`);
+      this.load.json(`${this.mapId}_obstacles`, `/api/maps/${this.mapId}/obstacles`);
+
+      // Handle background loading failure
+      this.load.once(`fileerror-image-${backgroundAssetKey}`, () => {
+          console.error(`[Phaser Scene] Failed to load background image: ${backgroundAssetKey}. Loading default.`);
+          if (!this.textures.exists('default_background')) {
+              this.load.image('default_background', '/assets/images/backgrounds/default_background.png');
+          }
+      });
+
+      this.load.on('complete', this.onAssetsLoaded, this);
+      this.load.start();
+  }
+
+  onAssetsLoaded() {
+      console.log("[Phaser Scene] All assets loaded, proceeding with scene setup.");
+
+      this.setupBackground();
+      this.setupObstacles();
+      this.setupPlayer();
+      this.setupQuizNodes();
+      this.setupCollisions();
+      this.setupControls();
+      this.setupCamera();
+  }
+
+  setupBackground() {
+      let backgroundAssetKey = `default_background`;
+      if (this.mapId && this.textures.exists(`${this.mapId}_background`)) {
+          backgroundAssetKey = `${this.mapId}_background`;
+      }
+      
+      if (this.textures.exists(backgroundAssetKey)) {
+          this.currentBackground = this.add.image(0, 0, backgroundAssetKey).setOrigin(0, 0);
+          const bgWidth = this.currentBackground.width;
+          const bgHeight = this.currentBackground.height;
+          this.physics.world.setBounds(0, 0, bgWidth, bgHeight);
+          this.updateMinZoom();
+          console.log(`[Phaser Scene] Set background ${backgroundAssetKey} and world bounds: ${bgWidth}x${bgHeight}.`);
+      } else {
+          console.error("[Phaser Scene] No background texture found.");
+          this.cameras.main.setBackgroundColor('#E3F2FD');
+      }
+  }
+
+  setupObstacles() {
+    if (!this.mapId) return;
+    this.obstacles = this.physics.add.staticGroup();
+    const obstacleData: ObstacleData[] = this.cache.json.get(`${this.mapId}_obstacles`);
+
+    if (obstacleData && Array.isArray(obstacleData)) {
+      obstacleData.forEach(obs => {
+          const obstacleBody = this.add.rectangle(obs.posX, obs.posY, obs.width, obs.height).setOrigin(0,0);
+          this.obstacles?.add(obstacleBody);
+          (obstacleBody.body as Phaser.Physics.Arcade.StaticBody).setPosition(obs.posX, obs.posY);
+      });
+      console.log(`[Phaser Scene] Setup ${obstacleData.length} obstacles for map: ${this.mapId}.`);
     } else {
-         console.warn("[Phaser Scene] mapId missing during preload, attempting to load default background.");
-        if (!this.textures.exists('default_background')) {
-             this.load.image('default_background', '/assets/images/backgrounds/default_background.png');
-        }
+      console.warn(`[Phaser Scene] No valid obstacle data found for map: ${this.mapId}`);
+    }
+  }
+  
+  setupPlayer() {
+      if (!this.textures.exists('player')) {
+          console.error("[Phaser Scene] Player texture 'player' not loaded.");
+          return;
+      }
+      const playerStartX = this.physics.world.bounds.width / 2;
+      const playerStartY = this.physics.world.bounds.height / 2;
+      this.player = this.physics.add.sprite(playerStartX, playerStartY, 'player', 0);
+      this.player.setScale(this.playerScale).setCollideWorldBounds(true);
+      
+      const hitboxWidth = this.player.width * 0.7;
+      const hitboxHeight = this.player.height * 0.8;
+      this.player.setBodySize(hitboxWidth, hitboxHeight);
+      this.player.setOffset(
+        (this.player.width - hitboxWidth) / 2, 
+        (this.player.height - hitboxHeight) / 2 + (this.player.height * 0.1)
+      );
+
+      this.createPlayerAnimations();
+  }
+
+  setupQuizNodes() {
+      if (!this.mapId || !this.nodeCreationData.length) return;
+      this.nodes = this.physics.add.staticGroup();
+      
+      const allMapNodes: NodeData[] = this.cache.json.get(`${this.mapId}_nodes`);
+      if (!allMapNodes) {
+          console.error(`[Phaser Scene] Node coordinate data for map ${this.mapId} not found.`);
+          return;
+      }
+
+      const allNodesMap = new Map(allMapNodes.map(n => [n.nodeId, n]));
+
+      this.nodeCreationData.forEach(quizNode => {
+          const nodeInfo = allNodesMap.get(quizNode.nodeId);
+          if (nodeInfo && nodeInfo.x != null && nodeInfo.y != null) {
+              const newNode = this.nodes?.create(nodeInfo.x, nodeInfo.y, 'node')
+                                .setData('nodeId', nodeInfo.nodeId)
+                                .setScale(2)
+                                .refreshBody();
+              newNode.anims.play('node_active', true);
+          } else {
+              console.warn(`[Phaser Scene] Could not find coordinates for quiz node ID: ${quizNode.nodeId}`);
+          }
+      });
+      this.createNodeAnimations();
+      this.updateAndEmitNodeCount();
+      console.log(`[Phaser Scene] Created ${this.nodes.countActive(true)} quiz nodes.`);
+  }
+
+  setupCollisions() {
+    if (this.player) {
+        if(this.obstacles) this.physics.add.collider(this.player, this.obstacles);
+        if(this.nodes) this.physics.add.overlap(this.player, this.nodes, this.handleNodeOverlap, undefined, this);
     }
   }
 
-  preload() {
-    console.log("[Phaser Scene] MainScene preload started.");
-    if (!this.mapId) {
-        console.error("[Phaser Scene] Cannot preload assets without mapId. Ensure initScene is called before preload.");
-        this.mapId = 'default';
-    }
+  setupControls() {
+      if (this.input.keyboard) {
+          this.cursors = this.input.keyboard.createCursorKeys();
+          this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as any;
+      }
+  }
+  
+  setupCamera() {
+      if (!this.player) return;
+      this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
+      this.cameras.main.setBounds(0, 0, this.physics.world.bounds.width, this.physics.world.bounds.height);
+      const clampedInitialZoom = Phaser.Math.Clamp(this.initialCameraZoomLevel, this.minZoom, this.maxZoom);
+      this.cameras.main.setZoom(clampedInitialZoom);
 
-    this.preloadAssets();
-
-     this.load.on('loaderror', (file: Phaser.Loader.File) => {
-         console.error(`[Phaser Scene Load Error] Failed to load file: ${file.key} from ${file.url}. Error type: ${file.type}, Status: ${file.xhrLoader?.status} ${file.xhrLoader?.statusText}`);
-     });
-     this.load.on('complete', () => {
-        console.log("[Phaser Scene] Asset loading complete.");
-     });
+      this.input.on('wheel', (pointer: Phaser.Input.Pointer, _: any, __: any, deltaY: number) => {
+          let newZoom = (deltaY > 0) ? this.cameras.main.zoom - this.zoomIncrement : this.cameras.main.zoom + this.zoomIncrement;
+          this.cameras.main.zoomTo(Phaser.Math.Clamp(newZoom, this.minZoom, this.maxZoom), 100);
+      });
+      this.scale.on('resize', this.handleResize, this);
+      this.handleResize(this.scale.gameSize);
   }
 
   createPlayerAnimations() {
       const frameRate = 10;
       const walkFrames = 4;
-
       this.anims.create({ key: 'idle_down', frames: [{ key: 'player', frame: 0 }], frameRate: 1 });
       this.anims.create({ key: 'idle_left', frames: [{ key: 'player', frame: 16 }], frameRate: 1 });
       this.anims.create({ key: 'idle_right', frames: [{ key: 'player', frame: 32 }], frameRate: 1 });
       this.anims.create({ key: 'idle_up', frames: [{ key: 'player', frame: 48 }], frameRate: 1 });
-
-      this.anims.create({
-          key: 'walk_down',
-          frames: this.anims.generateFrameNumbers('player', { start: 1, end: walkFrames }),
-          frameRate: frameRate,
-          repeat: -1
-      });
-      this.anims.create({
-          key: 'walk_left',
-          frames: this.anims.generateFrameNumbers('player', { start: 17, end: 16 + walkFrames }),
-          frameRate: frameRate,
-          repeat: -1
-      });
-       this.anims.create({
-          key: 'walk_right',
-          frames: this.anims.generateFrameNumbers('player', { start: 33, end: 32 + walkFrames }),
-          frameRate: frameRate,
-          repeat: -1
-      });
-      this.anims.create({
-          key: 'walk_up',
-          frames: this.anims.generateFrameNumbers('player', { start: 49, end: 48 + walkFrames }),
-          frameRate: frameRate,
-          repeat: -1
-      });
-      console.log("[Phaser Scene] Player animations created.");
+      this.anims.create({ key: 'walk_down', frames: this.anims.generateFrameNumbers('player', { start: 1, end: walkFrames }), frameRate, repeat: -1 });
+      this.anims.create({ key: 'walk_left', frames: this.anims.generateFrameNumbers('player', { start: 17, end: 16 + walkFrames }), frameRate, repeat: -1 });
+      this.anims.create({ key: 'walk_right', frames: this.anims.generateFrameNumbers('player', { start: 33, end: 32 + walkFrames }), frameRate, repeat: -1 });
+      this.anims.create({ key: 'walk_up', frames: this.anims.generateFrameNumbers('player', { start: 49, end: 48 + walkFrames }), frameRate, repeat: -1 });
   }
 
    createNodeAnimations() {
-       this.anims.create({
-           key: 'node_active',
-           frames: [ { key: 'node', frame: 0 }, { key: 'node', frame: 1 } ],
-           frameRate: 2,
-           repeat: -1,
-           yoyo: true
-       });
-       console.log("[Phaser Scene] Node animations created.");
+       this.anims.create({ key: 'node_active', frames: [ { key: 'node', frame: 0 }, { key: 'node', frame: 1 } ], frameRate: 2, repeat: -1, yoyo: true });
    }
-
-  create() {
-    console.log("[Phaser Scene] MainScene create method started.");
-
-    let backgroundAssetKey = `default_background`;
-    if (this.mapId && this.textures.exists(`${this.mapId}_background`)) {
-        backgroundAssetKey = `${this.mapId}_background`;
-    } else if (this.mapId && !this.textures.exists(`${this.mapId}_background`) && this.textures.exists('default_background')) {
-        console.warn(`[Phaser Scene] Map-specific background '${this.mapId}_background' not found, using default.`);
-        backgroundAssetKey = 'default_background';
-    } else if (!this.textures.exists('default_background')) {
-        console.error("[Phaser Scene] Default background texture 'default_background' not loaded.");
-        this.cameras.main.setBackgroundColor('#E3F2FD');
-        const defaultWidth = 1600; const defaultHeight = 1200;
-        this.physics.world.setBounds(0, 0, defaultWidth, defaultHeight);
-        this.cameras.main.setBounds(0, 0, defaultWidth, defaultHeight);
-        console.warn(`[Phaser Scene] Using fallback background color and bounds: ${defaultWidth}x${defaultHeight}`);
-    }
-
-    if (this.textures.exists(backgroundAssetKey)) {
-        this.currentBackground = this.add.image(0, 0, backgroundAssetKey).setOrigin(0, 0);
-        const bgWidth = this.currentBackground.width;
-        const bgHeight = this.currentBackground.height;
-        this.physics.world.setBounds(0, 0, bgWidth, bgHeight);
-        this.cameras.main.setBounds(0, 0, bgWidth, bgHeight);
-        this.minZoom = 0.3;
-        this.updateMinZoom();
-        console.log(`[Phaser Scene] Set background ${backgroundAssetKey} and world bounds: ${bgWidth}x${bgHeight}.`);
-    }
-
-    // Initialize obstacles group
-    this.obstacles = this.physics.add.staticGroup();
-
-    // Call a method to setup map-specific obstacles from the loaded JSON data
-    this.setupObstacles();
-
-    if (!this.textures.exists('player')) {
-         console.error("[Phaser Scene] Player texture 'player' not loaded.");
-          const placeholder = this.add.graphics().fillStyle(0x1A237E, 1);
-          const worldCenterX = this.physics.world.bounds.width / 2;
-          const worldCenterY = this.physics.world.bounds.height / 2;
-          placeholder.fillRect(worldCenterX - 16, worldCenterY - 16, 32, 32);
-          return;
-    }
-
-    const playerStartX = this.physics.world.bounds.width / 2;
-    const playerStartY = this.physics.world.bounds.height / 2;
-    this.player = this.physics.add.sprite(playerStartX, playerStartY, 'player', 0);
-    this.player.setScale(this.playerScale);
-    this.player.setCollideWorldBounds(true);
-    const hitboxWidth = this.player.width * 0.7;
-    const hitboxHeight = this.player.height * 0.8;
-    this.player.setBodySize(hitboxWidth, hitboxHeight);
-    const offsetX = (this.player.width - hitboxWidth) / 2;
-    const offsetY = (this.player.height - hitboxHeight) / 2 + (this.player.height * 0.1);
-    this.player.setOffset(offsetX, offsetY);
-    this.createPlayerAnimations();
-
-
-    this.nodes = this.physics.add.staticGroup();
-    if (!this.textures.exists('node')) {
-      console.error("[Phaser Scene] Node texture 'node' not loaded.");
-    } else {
-        console.log("[Phaser Scene] Creating nodes based on nodeCreationData...");
-        this.setupNodes(this.nodeCreationData);
-        this.createNodeAnimations();
-        this.nodes.children.iterate(child => {
-            const node = child as Phaser.Physics.Arcade.Sprite;
-            node.anims.play('node_active', true);
-            return true;
-        });
-        this.updateAndEmitNodeCount();
-        console.log(`[Phaser Scene] Initial node count: ${this.nodes.countActive(true)}`);
-    }
-
-    // Add collision between player and obstacles
-    if (this.player) {
-      this.physics.add.collider(this.player, this.obstacles);
-    }
-
-    this.physics.add.overlap(this.player, this.nodes, this.handleNodeOverlap, undefined, this);
-
-    if (this.input.keyboard) {
-        this.cursors = this.input.keyboard.createCursorKeys();
-        this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as any;
-    }
-
-    this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
-    const clampedInitialZoom = Phaser.Math.Clamp(this.initialCameraZoomLevel, this.minZoom, this.maxZoom);
-    this.cameras.main.setZoom(clampedInitialZoom);
-     console.log(`[Phaser Scene] Initial camera zoom set to: ${clampedInitialZoom}`);
-
-    this.input.on('wheel', (pointer: Phaser.Input.Pointer, gameObjects: Phaser.GameObjects.GameObject[], deltaX: number, deltaY: number, deltaZ: number) => {
-        let newZoom = (deltaY > 0) ? this.cameras.main.zoom - this.zoomIncrement : this.cameras.main.zoom + this.zoomIncrement;
-        newZoom = Phaser.Math.Clamp(newZoom, this.minZoom, this.maxZoom);
-        this.cameras.main.zoomTo(newZoom, 100);
-    });
-
-     this.scale.on('resize', this.handleResize, this);
-     this.handleResize(this.scale.gameSize);
-     console.log("[Phaser Scene] MainScene create method finished.");
-  }
   
-  // This is where you will define the collision areas for each map
-  setupObstacles() {
-    if (!this.obstacles || !this.mapId) return;
-
-    const obstacleData: ObstacleData[] = this.cache.json.get(`${this.mapId}_obstacles`);
-
-    if (!obstacleData || !Array.isArray(obstacleData)) {
-      console.warn(`[Phaser Scene] No valid obstacle data found for map: ${this.mapId}`);
-      return;
-    }
-
-    obstacleData.forEach(obs => {
-        const obstacleBody = this.add.rectangle(obs.posX, obs.posY, obs.width, obs.height);
-        // Position is from center, so adjust to be from top-left for the physics body
-        obstacleBody.setOrigin(0,0);
-        this.obstacles?.add(obstacleBody);
-        (obstacleBody.body as Phaser.Physics.Arcade.StaticBody).x = obs.posX;
-        (obstacleBody.body as Phaser.Physics.Arcade.StaticBody).y = obs.posY;
-
-    });
-    
-    console.log(`[Phaser Scene] Setup obstacles for map: ${this.mapId}. Total obstacles: ${this.obstacles.getLength()}`);
-  }
-
-
   handleResize(gameSize: Phaser.Structs.Size) {
-     const width = gameSize.width;
-     const height = gameSize.height;
-     console.log(`[Phaser Scene] Resize event detected: ${width}x${height}`);
      this.updateMinZoom();
      const currentZoom = this.cameras.main.zoom;
-     const newClampedZoom = Phaser.Math.Clamp(currentZoom, this.minZoom, this.maxZoom);
-     if (newClampedZoom !== currentZoom) {
-         this.cameras.main.setZoom(newClampedZoom);
-     }
- }
+     this.cameras.main.setZoom(Phaser.Math.Clamp(currentZoom, this.minZoom, this.maxZoom));
+  }
 
  updateMinZoom() {
     if (!this.currentBackground) return;
-    const bgWidth = this.currentBackground.width;
-    const bgHeight = this.currentBackground.height;
-    const gameWidth = this.scale.width;
-    const gameHeight = this.scale.height;
-    if (bgWidth <= 0 || bgHeight <= 0 || gameWidth <= 0 || gameHeight <= 0) {
-        this.minZoom = 0.1;
-        return;
+    const { width: bgWidth, height: bgHeight } = this.currentBackground;
+    const { width: gameWidth, height: gameHeight } = this.scale;
+    if (bgWidth > 0 && bgHeight > 0) {
+        this.minZoom = Math.max(gameWidth / bgWidth, gameHeight / bgHeight, 0.1);
+        this.minZoom = Phaser.Math.Clamp(this.minZoom, 0.1, 1);
     }
-    const zoomFitWidth = gameWidth / bgWidth;
-    const zoomFitHeight = gameHeight / bgHeight;
-    this.minZoom = Math.max(zoomFitWidth, zoomFitHeight, 0.1);
-    this.minZoom = Phaser.Math.Clamp(this.minZoom, 0.1, 1);
-    console.log(`[Phaser Scene] Min zoom recalculated: ${this.minZoom.toFixed(3)}`);
  }
 
-   handleNodeOverlap(player: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile,
-                     node: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile)
-   {
-     if (!node || !(node instanceof Phaser.Physics.Arcade.Sprite) || !node.body) {
-       return;
-     }
-     if (this.interactionOnCooldown || !node.body.enable) {
-         return;
-     }
-     const spriteNode = node as Phaser.Physics.Arcade.Sprite;
-     const nodeDbId = typeof spriteNode.getData === 'function' ? spriteNode.getData('nodeId') as number : null;
+   handleNodeOverlap(_: any, node: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile) {
+     if (this.interactionOnCooldown || !(node instanceof Phaser.Physics.Arcade.Sprite) || !node.body?.enable) return;
+     
+     const nodeDbId = node.getData('nodeId') as number;
+     if (!nodeDbId || !this.onNodeInteract) return;
 
-     if (!nodeDbId || !this.onNodeInteract) {
-       console.error("[Overlap] Node overlap detected, but callback or nodeId is missing!");
-       return;
-     }
-     console.log(`[Overlap] Player overlapped with node DB ID: ${nodeDbId}`);
-
-     try {
-        spriteNode.disableBody(false, false);
-     } catch (error) {
-         console.warn(`[Overlap] Error disabling body for node ${nodeDbId}:`, error);
-         return;
-     }
+     node.disableBody(false, false);
      this.onNodeInteract(nodeDbId);
      this.highlightNode(nodeDbId);
    }
 
    removeNode(nodeDbId: number) {
-     console.log(`[Phaser Scene] Attempting to remove node DB ID: ${nodeDbId}`);
      if (!this.nodes) return;
      this.clearNodeHighlight(nodeDbId);
-     try {
-         const nodeToRemove = this.nodes.getChildren().find(node => {
-           const spriteNode = node as Phaser.Physics.Arcade.Sprite;
-           return typeof spriteNode.getData === 'function' && spriteNode.getData('nodeId') === nodeDbId;
-         }) as Phaser.Physics.Arcade.Sprite | undefined;
-
-         if (nodeToRemove && nodeToRemove.active) {
-             nodeToRemove.destroy();
-             this.updateAndEmitNodeCount();
-             console.log(`[Phaser Scene] Node ${nodeDbId} destroyed.`);
-         } else {
-            this.updateAndEmitNodeCount();
-         }
-      } catch (error) {
-           console.error(`[Phaser Scene] Error during node removal for ${nodeDbId}:`, error);
-           this.updateAndEmitNodeCount();
-      }
+     const nodeToRemove = this.nodes.getChildren().find(n => (n as Phaser.GameObjects.Sprite).getData('nodeId') === nodeDbId);
+     if (nodeToRemove) {
+         nodeToRemove.destroy();
+         this.updateAndEmitNodeCount();
+     }
    }
 
    reEnableNode(nodeDbId: number) {
-        console.log(`[Phaser Scene] Attempting to re-enable node: ${nodeDbId}`);
        if (!this.nodes) return;
-        this.clearNodeHighlight(nodeDbId);
-        try {
-           const nodeToReEnable = this.nodes.getChildren().find(node => {
-               const spriteNode = node as Phaser.Physics.Arcade.Sprite;
-               return typeof spriteNode.getData === 'function' && spriteNode.getData('nodeId') === nodeDbId;
-           }) as Phaser.Physics.Arcade.Sprite | undefined;
+       this.clearNodeHighlight(nodeDbId);
+       const nodeToReEnable = this.nodes.getChildren().find(n => (n as Phaser.GameObjects.Sprite).getData('nodeId') === nodeDbId) as Phaser.Physics.Arcade.Sprite | undefined;
 
-           if (nodeToReEnable && nodeToReEnable.active) {
-               if(nodeToReEnable.body && !nodeToReEnable.body.enable){
-                    nodeToReEnable.enableBody(false, 0, 0, true, true);
-               }
-               if (!nodeToReEnable.anims.isPlaying) {
-                  nodeToReEnable.anims.play('node_active', true);
-               }
-           }
-        } catch (error) {
-            console.error(`[Phaser Scene] Error during node re-enable for ${nodeDbId}:`, error);
-        }
+       if (nodeToReEnable?.active && nodeToReEnable.body && !nodeToReEnable.body.enable) {
+            nodeToReEnable.enableBody(false, 0, 0, true, true);
+            nodeToReEnable.anims.play('node_active', true);
+       }
    }
 
    startInteractionCooldown(duration: number) {
-        try {
-            this.interactionOnCooldown = true;
-            if (this.cooldownTimerEvent) {
-                this.cooldownTimerEvent.remove(false);
-            }
-            this.cooldownTimerEvent = this.time.delayedCall(duration, () => {
-                this.interactionOnCooldown = false;
-                 this.cooldownTimerEvent = undefined;
-            }, [], this);
-        } catch (error) {
-             console.error("[Phaser Scene] Error starting interaction cooldown timer:", error);
-             this.interactionOnCooldown = false;
-        }
+        this.interactionOnCooldown = true;
+        this.cooldownTimerEvent?.remove();
+        this.cooldownTimerEvent = this.time.delayedCall(duration, () => {
+            this.interactionOnCooldown = false;
+        });
     }
 
    disablePlayerInput() {
        this.playerInputEnabled = false;
        this.joystickDirection = { x: 0, y: 0 };
        if (this.player?.body) {
-         try {
-            this.player.setVelocity(0);
-             const currentAnimKey = this.player.anims.currentAnim?.key;
-             if (currentAnimKey && currentAnimKey.startsWith('walk_')) {
-                 const facing = currentAnimKey.split('_')[1];
-                 this.player.anims.play(`idle_${facing}`, true);
-             } else {
-                 this.player.anims.play('idle_down', true);
-             }
-         } catch (error) {
-             console.warn("[Phaser Scene] Error stopping player during disablePlayerInput:", error);
+         this.player.setVelocity(0);
+         const key = this.player.anims.currentAnim?.key;
+         if (key?.startsWith('walk_')) {
+             this.player.anims.play(key.replace('walk_', 'idle_'), true);
          }
        }
    }
 
-   enablePlayerInput() {
-       this.playerInputEnabled = true;
-   }
-
-   joystickInput(data: JoystickOutputData) {
+   enablePlayerInput() { this.playerInputEnabled = true; }
+   joystickInput(data: { direction?: any; angle: { radian: number; }; }) {
         if (!this.playerInputEnabled) {
-             if(this.joystickDirection.x !== 0 || this.joystickDirection.y !== 0){
-                this.joystickDirection = { x: 0, y: 0 };
-             }
+             this.joystickDirection = { x: 0, y: 0 };
              return;
         }
         if (data.direction) {
-            const angle = data.angle.radian;
-            this.joystickDirection.x = Math.cos(angle);
-            this.joystickDirection.y = Math.sin(angle); // Phaser's Y is downwards
+            this.joystickDirection.x = Math.cos(data.angle.radian);
+            this.joystickDirection.y = Math.sin(data.angle.radian);
         } else {
             this.joystickDirection.x = 0;
             this.joystickDirection.y = 0;
         }
     }
-
     highlightNode(nodeDbId: number) {
         if (!this.nodes) return;
         if(this.highlightedNodeId && this.highlightedNodeId !== nodeDbId) {
             this.clearNodeHighlight(this.highlightedNodeId);
         }
-        try {
-            const nodeToHighlight = this.nodes.getChildren().find(node => {
-                return (node as Phaser.Physics.Arcade.Sprite).getData('nodeId') === nodeDbId;
-            }) as Phaser.Physics.Arcade.Sprite | undefined;
-
-            if (nodeToHighlight && this.highlightedNodeId !== nodeDbId) {
-                nodeToHighlight.setTint(0xffaa00);
-                nodeToHighlight.setScale(nodeToHighlight.scale * 1.2);
-                this.highlightedNodeId = nodeDbId;
-            }
-        } catch (error) {
-             console.error(`[Phaser Scene] Error during highlightNode for ${nodeDbId}:`, error);
+        const node = this.nodes.getChildren().find(n => (n as Phaser.GameObjects.Sprite).getData('nodeId') === nodeDbId) as Phaser.Physics.Arcade.Sprite | undefined;
+        if (node && this.highlightedNodeId !== nodeDbId) {
+            node.setTint(0xffaa00).setScale(node.scale * 1.2);
+            this.highlightedNodeId = nodeDbId;
         }
     }
 
     clearNodeHighlight(nodeDbId: number | null) {
         if (!this.nodes || !nodeDbId) return;
-         try {
-            const nodeToClear = this.nodes.getChildren().find(node => {
-                return (node as Phaser.Physics.Arcade.Sprite).getData('nodeId') === nodeDbId;
-            }) as Phaser.Physics.Arcade.Sprite | undefined;
-
-            if (nodeToClear?.active && (nodeToClear.isTinted || nodeToClear.scale > 2)) {
-                nodeToClear.clearTint();
-                 const originalNodeScale = 2;
-                 nodeToClear.setScale(originalNodeScale);
-                if (this.highlightedNodeId === nodeDbId) {
-                    this.highlightedNodeId = null;
-                }
-            }
-         } catch (error) {
-              console.error(`[Phaser Scene] Error during clearNodeHighlight for ${nodeDbId}:`, error);
-         }
+        const node = this.nodes.getChildren().find(n => (n as Phaser.GameObjects.Sprite).getData('nodeId') === nodeDbId) as Phaser.Physics.Arcade.Sprite | undefined;
+        if (node?.active && node.isTinted) {
+            node.clearTint().setScale(2); // Reset to original scale
+            if (this.highlightedNodeId === nodeDbId) this.highlightedNodeId = null;
+        }
     }
 
     private updateAndEmitNodeCount() {
-        if (!this.nodes || !this.onNodesCountUpdate) return;
-        try {
-            const count = this.nodes.countActive(true);
+        if (this.onNodesCountUpdate) {
+            const count = this.nodes?.countActive(true) || 0;
             this.onNodesCountUpdate(count);
-        } catch (error) {
-             console.error("[Phaser Scene] Error counting or emitting node count:", error);
         }
     }
 
-    public setupNodes(nodesData: NodeData[]) {
-        console.log(`[Phaser Scene] setupNodes called with ${nodesData.length} nodes.`);
-        if (!this.nodes || !this.textures.exists('node')) return;
+    public zoomIn() { this.cameras.main.zoomTo(Phaser.Math.Clamp(this.cameras.main.zoom + this.zoomIncrement, this.minZoom, this.maxZoom), 100); }
+    public zoomOut() { this.cameras.main.zoomTo(Phaser.Math.Clamp(this.cameras.main.zoom - this.zoomIncrement, this.minZoom, this.maxZoom), 100); }
 
-         try {
-            this.nodes.clear(true, true);
-         } catch (error) {
-              console.error("[Phaser Scene] Error clearing existing nodes:", error);
-         }
-
-        const nodeScale = 2;
-
-        nodesData.forEach((nodeInfo, index) => {
-            // Use provided positions, or default to center if null/undefined
-            const posX = nodeInfo.x ?? this.physics.world.bounds.width / 2;
-            const posY = nodeInfo.y ?? this.physics.world.bounds.height / 2;
-
-            try {
-                const newNode = this.nodes?.create(posX, posY, 'node')
-                                  .setData('nodeId', nodeInfo.nodeId) // Store numeric DB ID
-                                  .setScale(nodeScale)
-                                  .refreshBody();
-
-                if (newNode?.anims) {
-                     newNode.anims.play('node_active', true);
-                }
-            } catch(error) {
-                 console.error(`[Phaser Scene] Error creating node ${nodeInfo.nodeId} in setupNodes:`, error);
-            }
-       });
-
-       this.updateAndEmitNodeCount();
-    }
-
-    public zoomIn() {
-        try {
-            let newZoom = Phaser.Math.Clamp(this.cameras.main.zoom + this.zoomIncrement, this.minZoom, this.maxZoom);
-            this.cameras.main.zoomTo(newZoom, 100);
-        } catch(error){
-             console.error("[Phaser Scene] Error during zoomIn:", error);
+    update() {
+        if (!this.playerInputEnabled || !this.player?.body) {
+            this.player?.setVelocity(0);
+            return;
         }
-    }
+        this.player.setVelocity(0);
+        let moveX = 0, moveY = 0;
 
-    public zoomOut() {
-         try {
-            let newZoom = Phaser.Math.Clamp(this.cameras.main.zoom - this.zoomIncrement, this.minZoom, this.maxZoom);
-            this.cameras.main.zoomTo(newZoom, 100);
-         } catch(error){
-             console.error("[Phaser Scene] Error during zoomOut:", error);
-         }
-    }
+        if (this.cursors?.left.isDown || this.wasdKeys?.A.isDown) moveX = -1;
+        else if (this.cursors?.right.isDown || this.wasdKeys?.D.isDown) moveX = 1;
+        if (this.cursors?.up.isDown || this.wasdKeys?.W.isDown) moveY = -1;
+        else if (this.cursors?.down.isDown || this.wasdKeys?.S.isDown) moveY = 1;
 
+        if (moveX === 0 && moveY === 0 && (this.joystickDirection.x !== 0 || this.joystickDirection.y !== 0)) {
+            moveX = this.joystickDirection.x;
+            moveY = this.joystickDirection.y;
+        }
 
-  update(time: number, delta: number) {
-    if (!this.playerInputEnabled) {
-         if(this.player?.body?.velocity.x !== 0 || this.player?.body?.velocity.y !== 0) {
-             this.player.setVelocity(0);
-             const currentAnimKey = this.player.anims.currentAnim?.key;
-             if (currentAnimKey?.startsWith('walk_')) {
-                 this.player.anims.play(`idle_${currentAnimKey.split('_')[1]}`, true);
-             }
-         }
-         return;
-    }
-
-    if (!this.player?.body || !this.player?.anims) return;
-
-    try {
-       this.player.setVelocity(0);
-    } catch (error) {
-        console.warn("[Phaser Update] Error resetting player velocity:", error);
-        return;
-    }
-
-    let isMoving = false;
-    let moveX = 0;
-    let moveY = 0;
-
-    const leftPressed = this.cursors?.left.isDown || this.wasdKeys?.A?.isDown;
-    const rightPressed = this.cursors?.right.isDown || this.wasdKeys?.D?.isDown;
-    const upPressed = this.cursors?.up.isDown || this.wasdKeys?.W?.isDown;
-    const downPressed = this.cursors?.down.isDown || this.wasdKeys?.S?.isDown;
-
-    if (leftPressed) moveX = -1;
-    else if (rightPressed) moveX = 1;
-    if (upPressed) moveY = -1;
-    else if (downPressed) moveY = 1;
-
-    if (moveX === 0 && moveY === 0 && (this.joystickDirection.x !== 0 || this.joystickDirection.y !== 0)) {
-        moveX = this.joystickDirection.x;
-        moveY = this.joystickDirection.y;
-    }
-
-    isMoving = moveX !== 0 || moveY !== 0;
-
-    if (isMoving) {
-        const moveVector = new Phaser.Math.Vector2(moveX, moveY).normalize();
-        this.player.setVelocity(moveVector.x * this.playerSpeed, moveVector.y * this.playerSpeed);
-        
-        let facing = 'down';
-        if (Math.abs(moveY) > Math.abs(moveX)) {
-            facing = moveY < 0 ? 'up' : 'down';
+        if (moveX !== 0 || moveY !== 0) {
+            const moveVector = new Phaser.Math.Vector2(moveX, moveY).normalize();
+            this.player.setVelocity(moveVector.x * this.playerSpeed, moveVector.y * this.playerSpeed);
+            let facing = Math.abs(moveY) > Math.abs(moveX) ? (moveY < 0 ? 'up' : 'down') : (moveX < 0 ? 'left' : 'right');
+            this.player.anims.play(`walk_${facing}`, true);
         } else {
-            facing = moveX < 0 ? 'left' : 'right';
+            const key = this.player.anims.currentAnim?.key;
+            if (key?.startsWith('walk_')) this.player.anims.play(key.replace('walk_', 'idle_'), true);
         }
-        this.player.anims.play(`walk_${facing}`, true);
-    } else {
-        const currentAnimKey = this.player.anims.currentAnim?.key;
-        if (currentAnimKey?.startsWith('walk_')) {
-            const facing = currentAnimKey.split('_')[1] || 'down';
-            this.player.anims.play(`idle_${facing}`, true);
-        }
-    }
   }
 
   shutdown() {
       console.log("[Phaser Scene] Shutdown method called.");
-      if (this.cooldownTimerEvent) this.cooldownTimerEvent.remove(false);
+      this.cooldownTimerEvent?.remove();
       this.scale?.off('resize', this.handleResize, this);
+      this.load.off('complete', this.onAssetsLoaded, this);
   }
 
   destroy() {
-       console.log("[Phaser Scene] Destroy method called.");
        this.shutdown();
        super.destroy();
   }
