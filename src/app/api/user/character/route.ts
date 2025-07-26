@@ -10,7 +10,8 @@ async function getUserIdFromToken(token: string): Promise<number | null> {
   try {
     const secret = new TextEncoder().encode(process.env.JWT_SECRET);
     const { payload } = await jose.jwtVerify(token, secret);
-    return payload.user_id as number;
+    // CORRECTED: Use 'userId' (camelCase) to match the JWT payload
+    return payload.userId as number;
   } catch (error) {
     console.error('Failed to verify token:', error);
     return null;
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const updatedUser = await prisma.user.update({
+      // The database schema uses user_id, so this remains correct
       where: { user_id: userId },
       data: { character },
     });
