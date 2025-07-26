@@ -49,7 +49,7 @@
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.475.0",
     "next": "15.2.3",
-    "nipplejs": "^0.10.1",
+    "nipplejs": "^0.10.2",
     "patch-package": "^8.0.0",
     "phaser": "^3.80.1",
     "react": "^18.3.1",

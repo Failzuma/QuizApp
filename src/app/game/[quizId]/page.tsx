@@ -5,13 +5,15 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, CheckSquare } from 'lucide-react';
+import { Loader2, CheckSquare, Move, ZoomIn, ZoomOut } from 'lucide-react';
 import type MainSceneType from '@/game/scenes/MainScene';
 import type { NodeInteractionCallback, NodesCountCallback, SceneInitData } from '@/game/scenes/MainScene';
 import { useToast } from "@/hooks/use-toast";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { useRouter } from 'next/navigation';
+import nipplejs from 'nipplejs';
+import { useMobile } from '@/hooks/use-mobile';
 
 
 interface QuizNodeData {
@@ -38,6 +40,7 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
   const { quizId } = params;
   const { toast } = useToast();
   const router = useRouter();
+  const isMobile = useMobile();
 
   const [showQuiz, setShowQuiz] = useState(false);
   const [currentQuizNode, setCurrentQuizNode] = useState<QuizNodeData | null>(null);
@@ -53,6 +56,9 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const sceneInstanceRef = useRef<MainSceneType | null>(null);
+  const joystickManagerRef = useRef<nipplejs.JoystickManager | null>(null);
+  const joystickContainerRef = useRef<HTMLDivElement>(null);
+
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -158,6 +164,35 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
             setPhaserInitialized(false);
         };
       }, [gameData, user, phaserInitialized, handleNodeInteraction, handleNodesCountUpdate]);
+
+    useEffect(() => {
+        if (isMobile && phaserInitialized && joystickContainerRef.current && !joystickManagerRef.current) {
+            const options: nipplejs.JoystickManagerOptions = {
+                zone: joystickContainerRef.current,
+                mode: 'static',
+                position: { left: '50%', top: '50%' },
+                color: 'white',
+                size: 150,
+            };
+            const manager = nipplejs.create(options);
+            
+            manager.on('move', (evt, data) => {
+                sceneInstanceRef.current?.joystickInput(data);
+            });
+            manager.on('end', () => {
+                sceneInstanceRef.current?.joystickInput({ direction: undefined, angle: { radian: 0 }});
+            });
+
+            joystickManagerRef.current = manager;
+        }
+
+        return () => {
+            if (joystickManagerRef.current) {
+                joystickManagerRef.current.destroy();
+                joystickManagerRef.current = null;
+            }
+        };
+    }, [isMobile, phaserInitialized]);
     
     const handleAnswerSubmit = async () => {
         if (!selectedAnswer || !currentQuizNode) return;
@@ -217,6 +252,21 @@ export default function GamePage({ params }: { params: { quizId: string } }) {
                 <span className="font-bold text-lg text-primary">{remainingNodesCount ?? '--'}</span>
             </div>
         </div>
+
+        {isMobile && (
+            <>
+                <div ref={joystickContainerRef} className="absolute bottom-1/4 left-0 w-1/3 h-1/2" />
+
+                <div className="absolute bottom-8 right-4 flex flex-col gap-4 z-10">
+                    <Button size="icon" className="rounded-full h-14 w-14" onClick={() => sceneInstanceRef.current?.zoomIn()}>
+                        <ZoomIn />
+                    </Button>
+                    <Button size="icon" className="rounded-full h-14 w-14" onClick={() => sceneInstanceRef.current?.zoomOut()}>
+                        <ZoomOut />
+                    </Button>
+                </div>
+            </>
+        )}
         
         {showQuiz && currentQuizNode && (
             <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50 p-4">
