@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, PlusCircle, Edit, Trash2, Map, BookOpen, Users, Loader2, FileQuestion, PencilRuler } from 'lucide-react';
+import { Download, PlusCircle, Edit, Trash2, Map, BookOpen, Users, Loader2, FileQuestion, PencilRuler, Upload } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -156,11 +156,16 @@ export default function AdminPage() {
           <TabsContent value="questions">
              <Card>
               <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center flex-wrap gap-2">
                    <CardTitle>Global Question Bank</CardTitle>
-                   <Button size="sm" asChild>
-                       <Link href="/admin/create-question"><PlusCircle className="mr-2" /> Add New Question</Link>
-                    </Button>
+                   <div className="flex gap-2 flex-wrap">
+                       <Button size="sm" asChild>
+                           <Link href="/admin/create-question"><PlusCircle className="mr-2" /> Add New Question</Link>
+                        </Button>
+                        <Button size="sm" variant="outline" asChild>
+                           <Link href="/admin/bulk-upload"><Upload className="mr-2" /> Bulk Upload from JSON</Link>
+                        </Button>
+                   </div>
                 </div>
                 <CardDescription>These questions can be linked to any node in any quiz.</CardDescription>
               </CardHeader>
@@ -323,18 +328,12 @@ export default function AdminPage() {
                             </p>
                         </div>
                     )}
-                </CardContent>
-             </Card>
-          </TabsContent>
-        </Tabs>
-      </main>
-      <Footer />
-      
-       <AddMapModal
-          isOpen={isAddMapModalOpen}
-          onClose={() => setIsAddMapModalOpen(false)}
-          onSubmit={handleAddMap}
-       />
-    </div>
-  );
-}
+                </곰
+                 <AddMapModal
+                    isOpen={isAddMapModalOpen}
+                    onClose={() => setIsAddMapModalOpen(false)}
+                    onSubmit={handleAddMap}
+                 />
+              </div>
+            );
+          }
