@@ -3,18 +3,15 @@ import * as Phaser from 'phaser';
 
 // --- TYPE DEFINITIONS ---
 
-// Callbacks to communicate from Phaser back to React
 export type NodeInteractionCallback = (nodeDbId: number) => void;
 export type NodesCountCallback = (count: number) => void;
 
-// Data structure for a single node's position
 export interface NodeData {
     nodeId: number; 
     x: number | null;
     y: number | null;
 }
 
-// Data structure for the entire quiz payload
 interface GameData {
     quiz_id: number;
     title: string;
@@ -25,7 +22,6 @@ interface GameData {
     questions: { node_id: number }[];
 }
 
-// Data passed from React to initialize the scene
 export interface SceneInitData {
   gameData: GameData;
   playerCharacterUrl: string;
@@ -44,31 +40,26 @@ interface ObstacleData {
 // --- MAIN SCENE CLASS ---
 
 export default class MainScene extends Phaser.Scene {
-  // Core Game Objects
   private player?: Phaser.Physics.Arcade.Sprite;
   private nodes?: Phaser.Physics.Arcade.StaticGroup;
   private obstacles?: Phaser.Physics.Arcade.StaticGroup;
   
-  // Data & Callbacks from React
   private onNodeInteract!: NodeInteractionCallback; 
   private onNodesCountUpdate!: NodesCountCallback;
-  private gameData!: GameData; // Is guaranteed to be present by `init`
+  private gameData!: GameData;
   private playerCharacterUrl!: string;
 
-  // Input & Controls
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys?: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key; };
   private joystickDirection: { x: number; y: number } = { x: 0, y: 0 };
   private playerInputEnabled = true;
   
-  // Scene State
   private playerSpeed = 200;
   private playerScale = 2.0;
   private interactionOnCooldown = false;
   private highlightedNodeId: number | null = null;
   private currentBackground?: Phaser.GameObjects.Image;
   
-  // Camera & Zoom
   private minZoom = 0.5; 
   private maxZoom = 3;
   private zoomIncrement = 0.1;
@@ -77,45 +68,26 @@ export default class MainScene extends Phaser.Scene {
     super({ key: 'MainScene' });
   }
 
-  // Standard Phaser method to get data from scene.start()
   init(data: SceneInitData) {
     this.gameData = data.gameData;
     this.playerCharacterUrl = data.playerCharacterUrl;
     this.onNodeInteract = data.interactCallback;
     this.onNodesCountUpdate = data.countCallback;
-    console.log(`[Phaser Scene] Initialized with data for quiz: ${this.gameData.quiz_id}`);
   }
 
-  // Preload all necessary assets based on the init data
   preload() {
-    if (!this.gameData) {
-      console.error("[Phaser Scene] Game data is missing in preload. Aborting.");
-      return;
-    }
+    if (!this.gameData) return;
     const mapId = this.gameData.map.map_identifier;
-    console.log(`[Phaser Scene] Preloading assets for map: ${mapId}`);
-
-    // Load all assets in one go
     this.load.spritesheet('player', this.playerCharacterUrl, { frameWidth: 32, frameHeight: 32, endFrame: 127 });
     this.load.spritesheet('node', '/assets/images/node_placeholder_16.png', { frameWidth: 16, frameHeight: 16, endFrame: 1 });
-    
-    const backgroundAssetKey = `${mapId}_background`;
-    this.load.image(backgroundAssetKey, `/assets/images/backgrounds/${mapId}_background.png`);
+    this.load.image(`${mapId}_background`, `/assets/images/backgrounds/${mapId}_background.png`);
     this.load.image('default_background', '/assets/images/backgrounds/default_background.png');
-    
     this.load.json(`${mapId}_nodes`, `/api/maps/${mapId}/nodes`);
     this.load.json(`${mapId}_obstacles`, `/api/maps/${mapId}/obstacles`);
   }
 
-  // Create game objects after all assets are loaded
   create() {
-    if (!this.gameData) {
-      console.error("[Phaser Scene] Game data is missing in create. Aborting.");
-      return;
-    }
-    console.log("[Phaser Scene] Create method started.");
-    
-    // The order of setup is important
+    if (!this.gameData) return;
     this.setupBackground();
     this.setupObstacles();
     this.setupPlayer();
@@ -130,26 +102,22 @@ export default class MainScene extends Phaser.Scene {
   setupBackground() {
     const mapId = this.gameData.map.map_identifier;
     let backgroundAssetKey = this.textures.exists(`${mapId}_background`) ? `${mapId}_background` : 'default_background';
-    
     this.currentBackground = this.add.image(0, 0, backgroundAssetKey).setOrigin(0, 0);
     const { width, height } = this.currentBackground;
     this.physics.world.setBounds(0, 0, width, height);
     this.updateMinZoom();
-    console.log(`[Phaser Scene] Background '${backgroundAssetKey}' set with bounds: ${width}x${height}.`);
   }
 
   setupObstacles() {
     const mapId = this.gameData.map.map_identifier;
     this.obstacles = this.physics.add.staticGroup();
     const obstacleData: ObstacleData[] = this.cache.json.get(`${mapId}_obstacles`);
-
     if (obstacleData?.length) {
       obstacleData.forEach(obs => {
           const body = this.add.rectangle(obs.posX, obs.posY, obs.width, obs.height).setOrigin(0, 0);
           this.obstacles?.add(body);
           (body.body as Phaser.Physics.Arcade.StaticBody).setPosition(obs.posX, obs.posY);
       });
-      console.log(`[Phaser Scene] Setup ${obstacleData.length} obstacles.`);
     }
   }
   
@@ -157,11 +125,9 @@ export default class MainScene extends Phaser.Scene {
       const { width, height } = this.physics.world.bounds;
       this.player = this.physics.add.sprite(width / 2, height / 2, 'player', 0);
       this.player.setScale(this.playerScale).setCollideWorldBounds(true);
-      
       const hitboxWidth = this.player.width * 0.7;
       const hitboxHeight = this.player.height * 0.8;
-      this.player.setBodySize(hitboxWidth, hitboxHeight);
-      this.player.setOffset((this.player.width - hitboxWidth) / 2, (this.player.height - hitboxHeight) / 2 + (this.player.height * 0.1));
+      this.player.setBodySize(hitboxWidth, hitboxHeight).setOffset((this.player.width - hitboxWidth) / 2, (this.player.height - hitboxHeight) / 2 + (this.player.height * 0.1));
       this.createPlayerAnimations();
   }
 
@@ -169,32 +135,23 @@ export default class MainScene extends Phaser.Scene {
       const mapId = this.gameData.map.map_identifier;
       this.nodes = this.physics.add.staticGroup();
       const allMapNodes: NodeData[] = this.cache.json.get(`${mapId}_nodes`);
-      
-      if (!allMapNodes) {
-          console.error(`[Phaser Scene] Node coordinate data for map ${mapId} not found.`);
-          return;
-      }
-      const allNodesMap = new Map(allMapNodes.map(n => [n.nodeId, n]));
+      if (!allMapNodes) return;
 
+      const allNodesMap = new Map(allMapNodes.map(n => [n.nodeId, n]));
       this.gameData.questions.forEach(quizNode => {
           const nodeInfo = allNodesMap.get(quizNode.node_id);
-          if (nodeInfo && nodeInfo.x != null && nodeInfo.y != null) {
-              const newNode = this.nodes?.create(nodeInfo.x, nodeInfo.y, 'node')
-                                .setData('nodeId', nodeInfo.node_id)
-                                .setScale(2)
-                                .refreshBody();
-              newNode.anims.play('node_active', true);
+          if (nodeInfo?.x != null && nodeInfo?.y != null) {
+              this.nodes?.create(nodeInfo.x, nodeInfo.y, 'node').setData('nodeId', nodeInfo.node_id).setScale(2).refreshBody().anims.play('node_active', true);
           }
       });
       this.createNodeAnimations();
       this.updateAndEmitNodeCount();
-      console.log(`[Phaser Scene] Created ${this.nodes.countActive(true)} quiz nodes.`);
   }
 
   setupCollisions() {
     if (this.player) {
-      if(this.obstacles) this.physics.add.collider(this.player, this.obstacles);
-      if(this.nodes) this.physics.add.overlap(this.player, this.nodes, this.handleNodeOverlap, undefined, this);
+      if (this.obstacles) this.physics.add.collider(this.player, this.obstacles);
+      if (this.nodes) this.physics.add.overlap(this.player, this.nodes, this.handleNodeOverlap, undefined, this);
     }
   }
   
@@ -220,13 +177,11 @@ export default class MainScene extends Phaser.Scene {
   // --- ANIMATIONS ---
 
   createPlayerAnimations() {
-      const anims = ['idle_down:0', 'idle_left:16', 'idle_right:32', 'idle_up:48'];
-      anims.forEach(anim => {
+      ['idle_down:0', 'idle_left:16', 'idle_right:32', 'idle_up:48'].forEach(anim => {
           const [key, frame] = anim.split(':');
           this.anims.create({ key, frames: [{ key: 'player', frame: parseInt(frame) }] });
       });
-      const walkAnims = ['walk_down:1-4', 'walk_left:17-20', 'walk_right:33-36', 'walk_up:49-52'];
-      walkAnims.forEach(anim => {
+      ['walk_down:1-4', 'walk_left:17-20', 'walk_right:33-36', 'walk_up:49-52'].forEach(anim => {
           const [key, frames] = anim.split(':');
           const [start, end] = frames.split('-').map(Number);
           this.anims.create({ key, frames: this.anims.generateFrameNumbers('player', { start, end }), frameRate: 10, repeat: -1 });
@@ -253,7 +208,7 @@ export default class MainScene extends Phaser.Scene {
     }
   }
 
-  handleNodeOverlap(_: any, node: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile) {
+  handleNodeOverlap(_: any, node: Phaser.Types.Physics.Arcade.GameObjectWithBody) {
      if (this.interactionOnCooldown || !(node instanceof Phaser.Physics.Arcade.Sprite) || !node.body?.enable) return;
      const nodeDbId = node.getData('nodeId') as number;
      if (nodeDbId) {
@@ -264,8 +219,12 @@ export default class MainScene extends Phaser.Scene {
   }
  
   update() {
-    if (!this.player?.body || !this.playerInputEnabled) {
-      this.player?.setVelocity(0);
+    if (!this.player?.body) return;
+
+    // FIX: Reset velocity at the start of every frame.
+    this.player.setVelocity(0);
+
+    if (!this.playerInputEnabled) {
       return;
     }
     
