@@ -328,12 +328,18 @@ export default function AdminPage() {
                             </p>
                         </div>
                     )}
-                </곰
-                 <AddMapModal
-                    isOpen={isAddMapModalOpen}
-                    onClose={() => setIsAddMapModalOpen(false)}
-                    onSubmit={handleAddMap}
-                 />
-              </div>
-            );
-          }
+                </CardContent>
+             </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
+      <Footer />
+      
+       <AddMapModal
+          isOpen={isAddMapModalOpen}
+          onClose={() => setIsAddMapModalOpen(false)}
+          onSubmit={handleAddMap}
+       />
+    </div>
+  );
+}
