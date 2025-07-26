@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import nipplejs from 'nipplejs';
 import { useMobile } from '@/hooks/use-mobile';
 
+// --- TYPE DEFINITIONS ---
 
 interface QuizNodeData {
     node_id: number;
@@ -23,7 +24,6 @@ interface QuizNodeData {
     options: { option_id: number; option_text: string }[];
 }
 
-// Updated GameData interface to reflect the new API response structure
 interface GameData {
     quiz_id: number;
     title: string;
@@ -40,271 +40,243 @@ interface UserData {
     character: string;
 }
 
+
+// --- MAIN COMPONENT ---
+
 export default function GamePage({ params }: { params: { quizId: string } }) {
   const { quizId } = params;
   const { toast } = useToast();
   const router = useRouter();
   const isMobile = useMobile();
 
-  const [showQuiz, setShowQuiz] = useState(false);
-  const [currentQuizNode, setCurrentQuizNode] = useState<QuizNodeData | null>(null);
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [remainingNodesCount, setRemainingNodesCount] = useState<number | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [phaserInitialized, setPhaserInitialized] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  
+  // --- State Management ---
   const [gameData, setGameData] = useState<GameData | null>(null);
   const [user, setUser] = useState<UserData | null>(null);
-
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentQuizNode, setCurrentQuizNode] = useState<QuizNodeData | null>(null);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [remainingNodesCount, setRemainingNodesCount] = useState<number | null>(null);
+  
+  // Refs for Phaser and Joystick instances
   const gameInstanceRef = useRef<Phaser.Game | null>(null);
-  const gameContainerRef = useRef<HTMLDivElement>(null);
   const sceneInstanceRef = useRef<MainSceneType | null>(null);
   const joystickManagerRef = useRef<nipplejs.JoystickManager | null>(null);
+  const gameContainerRef = useRef<HTMLDivElement>(null);
   const joystickContainerRef = useRef<HTMLDivElement>(null);
 
-
+  // --- Data Fetching and User Validation Effect ---
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
+    const initialize = async () => {
+      setIsLoading(true);
+      const token = localStorage.getItem('token');
+      const userData = localStorage.getItem('user');
 
-    if (!token || !userData) {
-      toast({ title: "Akses Ditolak", description: "Anda harus login untuk bermain.", variant: "destructive" });
-      router.push('/login');
-      return;
-    }
-    try {
+      if (!token || !userData) {
+        toast({ title: "Akses Ditolak", description: "Anda harus login untuk bermain.", variant: "destructive" });
+        router.push('/login');
+        return;
+      }
+      try {
         setUser(JSON.parse(userData));
-    } catch(e) {
+      } catch (e) {
         toast({ title: "Error", description: "Data user tidak valid.", variant: "destructive" });
         router.push('/login');
         return;
-    }
+      }
 
-    const fetchGameData = async () => {
-       if (!quizId) return;
-       setIsLoading(true);
-       try {
-            const response = await fetch(`/api/quizzes/${quizId}`);
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Quiz tidak ditemukan');
-            }
-            const data: GameData = await response.json();
-            setGameData(data);
-            setRemainingNodesCount(data.questions.length);
-       } catch (error: any) {
-            console.error("[React] Error fetching game data:", error);
-            toast({ title: "Gagal memuat kuis", description: error.message, variant: "destructive" });
-       } finally {
-            setIsLoading(false);
-       }
+      try {
+        const response = await fetch(`/api/quizzes/${quizId}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Quiz tidak ditemukan');
+        }
+        const data: GameData = await response.json();
+        setGameData(data);
+        setRemainingNodesCount(data.questions.length);
+      } catch (error: any) {
+        console.error("[React] Error fetching game data:", error);
+        toast({ title: "Gagal memuat kuis", description: error.message, variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
     };
-    fetchGameData();
+    initialize();
   }, [quizId, toast, router]);
-    
-  const handleNodeInteraction: NodeInteractionCallback = useCallback((nodeDbId) => {
+
+  // --- Phaser Interaction Callbacks ---
+  const handleNodeInteraction = useCallback((nodeDbId: number) => {
     const quizNode = gameData?.questions.find(n => n.node_id === nodeDbId);
     if (quizNode) {
-        setCurrentQuizNode(quizNode);
-        setShowQuiz(true);
-        setSelectedAnswer(null);
-        sceneInstanceRef.current?.disablePlayerInput();
+      setCurrentQuizNode(quizNode);
+      setSelectedAnswer(null);
+      sceneInstanceRef.current?.disablePlayerInput();
     }
   }, [gameData]);
 
-  const handleNodesCountUpdate: NodesCountCallback = useCallback((count) => {
-      setRemainingNodesCount(count);
+  const handleNodesCountUpdate = useCallback((count: number) => {
+    setRemainingNodesCount(count);
   }, []);
 
-  const removeNodeFromScene = useCallback((nodeDbId: number) => {
-    sceneInstanceRef.current?.removeNode(nodeDbId);
-    setGameData(prevData => {
-        if (!prevData) return null;
-        return { ...prevData, questions: prevData.questions.filter(q => q.node_id !== nodeDbId) };
-    });
-  }, []);
-
-   useEffect(() => {
-        // Now, we wait for both gameData and user data before initializing
-        if (!gameData || !user || !gameContainerRef.current || phaserInitialized) {
-          return;
-        }
-
-        const initPhaser = async () => {
-            setPhaserInitialized(true);
-            const Phaser = await import('phaser');
-            const { default: MainScene } = await import('@/game/scenes/MainScene');
-            const mainSceneInstance = new MainScene();
-
-            // The init data now passes the whole gameData object
-            const sceneInitData: SceneInitData = {
-                gameData,
-                playerCharacterUrl: user.character,
-            };
-
-            const config: Phaser.Types.Core.GameConfig = {
-              type: Phaser.AUTO,
-              parent: gameContainerRef.current!,
-              width: '100%',
-              height: '100%',
-              physics: { default: 'arcade', arcade: { gravity: { y: 0 } } },
-              scene: mainSceneInstance,
-              render: { pixelArt: true, antialias: false },
-              scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
-              callbacks: {
-                postBoot: (bootedGame) => {
-                  const scene = bootedGame.scene.getScene('MainScene') as MainSceneType;
-                  // The initScene callback now only needs the init data and callbacks
-                  scene?.initScene(sceneInitData, handleNodeInteraction, handleNodesCountUpdate);
-                  sceneInstanceRef.current = scene;
-                }
-              }
-            };
-            gameInstanceRef.current = new Phaser.Game(config);
-        }
-        initPhaser();
-
-        return () => {
-            gameInstanceRef.current?.destroy(true);
-            gameInstanceRef.current = null;
-            setPhaserInitialized(false);
-        };
-      }, [gameData, user, phaserInitialized, handleNodeInteraction, handleNodesCountUpdate]);
-
-    useEffect(() => {
-        if (isMobile && phaserInitialized && joystickContainerRef.current && !joystickManagerRef.current) {
-            const options: nipplejs.JoystickManagerOptions = {
-                zone: joystickContainerRef.current,
-                mode: 'static',
-                position: { left: '50%', top: '50%' },
-                color: 'white',
-                size: 150,
-            };
-            const manager = nipplejs.create(options);
-            
-            manager.on('move', (evt, data) => {
-                sceneInstanceRef.current?.joystickInput(data);
-            });
-            manager.on('end', () => {
-                sceneInstanceRef.current?.joystickInput({ direction: undefined, angle: { radian: 0 }});
-            });
-
-            joystickManagerRef.current = manager;
-        }
-
-        return () => {
-            joystickManagerRef.current?.destroy();
-            joystickManagerRef.current = null;
-        };
-    }, [isMobile, phaserInitialized]);
-    
-    const handleAnswerSubmit = async () => {
-        if (!selectedAnswer || !currentQuizNode) return;
-        setIsSubmitting(true);
-        
-        await new Promise(resolve => setTimeout(resolve, 500)); 
-        
-        toast({ title: "Jawaban Terkirim!", description: "Jawabanmu telah direkam.", });
-        
-        removeNodeFromScene(currentQuizNode.node_id);
-        closeQuiz(false);
-        setIsSubmitting(false);
-    };
-
-    const closeQuiz = (reEnableNode = true) => {
-        if (reEnableNode && currentQuizNode) {
-            sceneInstanceRef.current?.reEnableNode(currentQuizNode.node_id);
-        }
-        setShowQuiz(false);
-        setCurrentQuizNode(null);
-        sceneInstanceRef.current?.enablePlayerInput();
-    };
-
-    if (isLoading || !user) {
-        return (
-             <div className="flex flex-col h-screen items-center justify-center">
-                <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                <p className="mt-4 text-muted-foreground">Memuat Kuis...</p>
-             </div>
-        )
+  // --- Phaser Game Initialization and Cleanup Effect ---
+  useEffect(() => {
+    if (isLoading || !gameData || !user || !gameContainerRef.current || gameInstanceRef.current) {
+      return; // Exit if still loading, data is missing, or game is already initialized
     }
     
-    if (!gameData) {
-        return (
-             <div className="flex flex-col h-screen items-center justify-center">
-                <p className="mt-4 text-destructive">Tidak dapat memuat data game. Kuis mungkin tidak ada atau terjadi kesalahan.</p>
-             </div>
-        )
-    }
+    let game: Phaser.Game;
 
+    const initPhaser = async () => {
+      const Phaser = await import('phaser');
+      const { default: MainScene } = await import('@/game/scenes/MainScene');
+      
+      const sceneInitData: SceneInitData = {
+        gameData,
+        playerCharacterUrl: user.character,
+        interactCallback: handleNodeInteraction,
+        countCallback: handleNodesCountUpdate,
+      };
+
+      const config: Phaser.Types.Core.GameConfig = {
+        type: Phaser.AUTO,
+        parent: gameContainerRef.current!,
+        width: '100%',
+        height: '100%',
+        physics: { default: 'arcade', arcade: { gravity: { y: 0 } } },
+        render: { pixelArt: true, antialias: false },
+        scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
+        scene: MainScene,
+      };
+      
+      game = new Phaser.Game(config);
+      game.scene.start('MainScene', sceneInitData); // Pass data on start
+      sceneInstanceRef.current = game.scene.getScene('MainScene') as MainSceneType;
+      gameInstanceRef.current = game;
+    };
+
+    initPhaser();
+
+    return () => {
+      sceneInstanceRef.current = null;
+      gameInstanceRef.current?.destroy(true);
+      gameInstanceRef.current = null;
+    };
+  }, [isLoading, gameData, user, handleNodeInteraction, handleNodesCountUpdate]);
+
+  // --- Joystick Initialization Effect ---
+  useEffect(() => {
+    if (isMobile && gameInstanceRef.current && joystickContainerRef.current && !joystickManagerRef.current) {
+        const manager = nipplejs.create({
+            zone: joystickContainerRef.current,
+            mode: 'static',
+            position: { left: '50%', top: '50%' },
+            color: 'white',
+            size: 150,
+        });
+        
+        manager.on('move', (_, data) => sceneInstanceRef.current?.joystickInput(data));
+        manager.on('end', () => sceneInstanceRef.current?.joystickInput({ direction: undefined, angle: { radian: 0 } }));
+
+        joystickManagerRef.current = manager;
+    }
+    return () => {
+        joystickManagerRef.current?.destroy();
+        joystickManagerRef.current = null;
+    };
+  }, [isMobile, gameData]); // Reruns if gameData changes, ensuring joystick is ready
+
+  // --- UI Event Handlers ---
+  const handleAnswerSubmit = async () => {
+    if (!selectedAnswer || !currentQuizNode) return;
+    setIsSubmitting(true);
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 500)); 
+    toast({ title: "Jawaban Terkirim!", description: "Jawabanmu telah direkam." });
+    
+    sceneInstanceRef.current?.removeNode(currentQuizNode.node_id);
+    closeQuiz(false);
+    setIsSubmitting(false);
+  };
+
+  const closeQuiz = (reEnableNode = true) => {
+    if (reEnableNode && currentQuizNode) {
+      sceneInstanceRef.current?.reEnableNode(currentQuizNode.node_id);
+    }
+    setCurrentQuizNode(null);
+    sceneInstanceRef.current?.enablePlayerInput();
+  };
+
+  // --- Render Logic ---
+  if (isLoading || !gameData) {
     return (
+      <div className="flex flex-col h-screen items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="mt-4 text-muted-foreground">{isLoading ? 'Memuat Kuis...' : 'Gagal memuat data.'}</p>
+      </div>
+    );
+  }
+
+  return (
     <div className="flex flex-col h-screen overflow-hidden">
       <Header />
       <main className="flex-grow relative">
         <div ref={gameContainerRef} id="phaser-game-container" className="absolute inset-0 bg-muted" />
         
+        {/* --- In-Game UI --- */}
         <div className="absolute top-4 left-4 z-10 flex flex-col gap-4 w-full max-w-xs sm:max-w-sm">
-            <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow">
-                <h1 className="text-lg font-bold text-primary truncate">{gameData.title}</h1>
-                <p className="text-xs text-muted-foreground">Peta: <span className="font-mono bg-muted px-1 py-0.5 rounded">{gameData.map.title}</span></p>
-            </div>
-            <div className="bg-background/70 backdrop-blur-sm p-3 rounded-lg shadow flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <CheckSquare className="h-5 w-5 text-primary" />
-                    <span className="text-sm font-medium">Node Tersisa:</span>
-                </div>
-                <span className="font-bold text-lg text-primary">{remainingNodesCount ?? '--'}</span>
-            </div>
+          <Card className="bg-background/80 backdrop-blur-sm">
+            <CardHeader className="p-3">
+              <CardTitle className="text-lg truncate">{gameData.title}</CardTitle>
+              <CardDescription>Peta: {gameData.map.title}</CardDescription>
+            </CardHeader>
+          </Card>
+          <Card className="bg-background/80 backdrop-blur-sm">
+            <CardContent className="p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckSquare className="h-5 w-5 text-primary" />
+                <span className="text-sm font-medium">Node Tersisa:</span>
+              </div>
+              <span className="font-bold text-lg text-primary">{remainingNodesCount ?? '--'}</span>
+            </CardContent>
+          </Card>
         </div>
 
         {isMobile && (
-            <>
-                <div ref={joystickContainerRef} className="absolute bottom-1/4 left-0 w-1/3 h-1/2" />
-
-                <div className="absolute bottom-8 right-4 flex flex-col gap-4 z-10">
-                    <Button size="icon" className="rounded-full h-14 w-14" onClick={() => sceneInstanceRef.current?.zoomIn()}>
-                        <ZoomIn />
-                    </Button>
-                    <Button size="icon" className="rounded-full h-14 w-14" onClick={() => sceneInstanceRef.current?.zoomOut()}>
-                        <ZoomOut />
-                    </Button>
-                </div>
-            </>
+          <>
+            <div ref={joystickContainerRef} className="absolute bottom-1/4 left-0 w-1/3 h-1/2" />
+            <div className="absolute bottom-8 right-4 flex flex-col gap-4 z-10">
+              <Button size="icon" className="rounded-full h-14 w-14" onClick={() => sceneInstanceRef.current?.zoomIn()}><ZoomIn /></Button>
+              <Button size="icon" className="rounded-full h-14 w-14" onClick={() => sceneInstanceRef.current?.zoomOut()}><ZoomOut /></Button>
+            </div>
+          </>
         )}
         
-        {showQuiz && currentQuizNode && (
-            <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50 p-4">
-                <Card className="w-full max-w-2xl">
-                    <CardHeader>
-                        <CardTitle>Pertanyaan</CardTitle>
-                        <CardDescription>{currentQuizNode.question_text}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <RadioGroup 
-                            value={selectedAnswer ?? undefined} 
-                            onValueChange={setSelectedAnswer}
-                            className="space-y-2"
-                        >
-                            {currentQuizNode.options.map(opt => (
-                                <div key={opt.option_id} className="flex items-center space-x-2">
-                                    <RadioGroupItem value={opt.option_text} id={`opt-${opt.option_id}`} />
-                                    <Label htmlFor={`opt-${opt.option_id}`}>{opt.option_text}</Label>
-                                </div>
-                            ))}
-                        </RadioGroup>
-
-                        <div className="flex justify-end gap-2 mt-6">
-                            <Button variant="outline" onClick={() => closeQuiz(true)} disabled={isSubmitting}>
-                                Batal
-                            </Button>
-                            <Button onClick={handleAnswerSubmit} disabled={!selectedAnswer || isSubmitting}>
-                                {isSubmitting ? <Loader2 className="animate-spin" /> : 'Kirim Jawaban'}
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
+        {/* --- Quiz Modal --- */}
+        {currentQuizNode && (
+          <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <Card className="w-full max-w-2xl">
+              <CardHeader>
+                <CardTitle>Pertanyaan</CardTitle>
+                <CardDescription>{currentQuizNode.question_text}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <RadioGroup value={selectedAnswer ?? undefined} onValueChange={setSelectedAnswer} className="space-y-2">
+                  {currentQuizNode.options.map(opt => (
+                    <div key={opt.option_id} className="flex items-center space-x-2">
+                      <RadioGroupItem value={opt.option_text} id={`opt-${opt.option_id}`} />
+                      <Label htmlFor={`opt-${opt.option_id}`}>{opt.option_text}</Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+                <div className="flex justify-end gap-2 mt-6">
+                  <Button variant="outline" onClick={() => closeQuiz(true)} disabled={isSubmitting}>Batal</Button>
+                  <Button onClick={handleAnswerSubmit} disabled={!selectedAnswer || isSubmitting}>
+                    {isSubmitting ? <Loader2 className="animate-spin" /> : 'Kirim Jawaban'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
       </main>
     </div>
